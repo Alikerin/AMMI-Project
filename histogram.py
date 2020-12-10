@@ -148,5 +148,5 @@ def histogram_losses(hgram1, hgram2):
     mi = 0
     for channel_hgram1, channel_hgram2 in zip(hgram1, hgram2):
         emd += emd_loss(channel_hgram1[0], channel_hgram2[0])
-        mi += dmi(channel_hgram1[1], channel_hgram2[1])
+        # mi += dmi(channel_hgram1[1], channel_hgram2[1])
     return emd / 3, mi / 3

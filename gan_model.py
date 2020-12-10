@@ -156,7 +156,9 @@ class GANModel:
         # save image
         if save:
             self.save_image(
-                (edge, img, gen), out_dir_img, "train_ep_%d_img_%d" % (epoch, img_idx)
+                (edge[0].unsqueeze(0), img[0].unsqueeze(0), gen[0].unsqueeze(0)),
+                out_dir_img,
+                "train_ep_%d_img_%d" % (epoch, img_idx[0]),
             )
 
         return {
@@ -175,7 +177,7 @@ class GANModel:
 
         with torch.no_grad():
             edge, img, img_idx = input
-            histogram = extract_1d_hist(_hist_layer, img)
+            histogram = extract_1d_hist(self.hist_layer, img)
             gen = self.G(edge, histogram)
 
             # self.save_image((x, gen, y), 'datasets/maps/samples', '2018')
@@ -201,7 +203,7 @@ class GANModel:
             h_gen = extract_hist(self.hist_layer, gen)
             emd_loss, mi_loss = histogram_losses(h_real, h_gen)
             loss_G_EMD = self.lambda_emd * emd_loss
-            loss_G_MI = self.lamdda_mi * mi_loss
+            loss_G_MI = self.lambda_mi * mi_loss
 
             # Combine
             loss_G = loss_G_gan + loss_G_MI + loss_G_EMD
@@ -209,7 +211,9 @@ class GANModel:
         # save image
         if save:
             self.save_image(
-                (edge, img, gen), out_dir_img, "val_ep_%d_img_%d" % (epoch, img_idx)
+                (edge[0].unsqueeze(0), img[0].unsqueeze(0), gen[0].unsqueeze(0)),
+                out_dir_img,
+                "val_ep_%d_img_%d" % (epoch, img_idx[0]),
             )
 
         return {
