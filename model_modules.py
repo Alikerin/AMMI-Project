@@ -287,7 +287,8 @@ def Conv_Norm_ReLU(
 ):
     """
     Convolutional -- Norm -- ReLU Unit
-    :param norm: 'batchnorm' --> use BatchNorm2D, 'instancenorm' --> use InstanceNorm2D, 'none' --> Identity()
+    :param norm: 'batchnorm' --> use BatchNorm2D, 'instancenorm' --> use InstanceNorm2D,
+        'none' --> Identity()
     :param relu: None -> Use vanilla ReLU; float --> Use LeakyReLU(relu)
 
     :input (N x in_channel x H x W)
@@ -326,7 +327,8 @@ def Deconv_Norm_ReLU(
 ):
     """
     Deconvolutional -- Norm -- ReLU Unit
-    :param norm: 'batchnorm' --> use BatchNorm2D, 'instancenorm' --> use InstanceNorm2D, 'none' --> Identity()
+    :param norm: 'batchnorm' --> use BatchNorm2D, 'instancenorm' --> use InstanceNorm2D,
+        'none' --> Identity()
     :param relu: None -> Use vanilla ReLU; float --> Use LeakyReLU(relu)
 
     :input (N x in_channel x H x W)
@@ -353,10 +355,11 @@ def Deconv_Norm_ReLU(
 class ResidualLayer(nn.Module):
     """
     Residual block used in Johnson's network model:
-    Our residual blocks each contain two 3×3 convolutional layers with the same number of filters on both
-    layer. We use the residual block design of Gross and Wilber [2] (shown in Figure 1), which differs from
-    that of He et al [3] in that the ReLU nonlinearity following the addition is removed; this modified design
-    was found in [2] to perform slightly better for image classification.
+    Our residual blocks each contain two 3×3 convolutional layers with the same number of
+    filters on both layer. We use the residual block design of Gross and Wilber [2]
+    (shown in Figure 1), which differs from that of He et al [3] in that the ReLU
+    nonlinearity following the addition is removed; this modified design was found in [2]
+    to perform slightly better for image classification.
     """
 
     def __init__(
@@ -374,9 +377,7 @@ class ResidualLayer(nn.Module):
         self.padding = (self.kernel_size[0] - 1) // 2
         self.final_relu = final_relu
 
-        norm_layer, relu_layer = norm_relu_layer(
-            self.channels, do_norm, norm, relu=None
-        )
+        norm_layer, relu_layer = norm_relu_layer(self.channels, do_norm, norm, relu=None)
         self.layers = nn.Sequential(
             nn.Conv2d(
                 self.channels,
@@ -409,8 +410,8 @@ class ResidualLayer(nn.Module):
 
 class GeneratorJohnson(nn.Module):
     """
-    The Generator architecture in < Perceptual Losses for Real-Time Style Transfer and Super-Resolution >
-    by Justin Johnson, et al.
+    The Generator architecture in < Perceptual Losses for Real-Time Style Transfer and
+    Super-Resolution > by Justin Johnson, et al.
     """
 
     def __init__(
@@ -488,7 +489,8 @@ class GeneratorJohnson(nn.Module):
     def forward(self, input):
         """
         :param input: (N x channels x H x W)
-        :return: output: (N x channels x H x W) with numbers of range [-1, 1] (since we use tanh())
+        :return: output: (N x channels x H x W) with numbers of range [-1, 1] (since we
+            use tanh())
         """
         return self.model(input)
 
@@ -597,7 +599,8 @@ class Resnet50(nn.Module):
             raise Exception("Norm not specified!")
 
         model = []
-        # Downsample, 256 -> 128 -> 64 -> 32 -> 16 -> 8, throw out last 4 layers from batch norm to FC
+        # Downsample, 256 -> 128 -> 64 -> 32 -> 16 -> 8, throw out last 4 layers from
+        # batch norm to FC
         res_original = models.resnet50(pretrained=False)
         model += list(res_original.children())[:-2]
 
@@ -643,7 +646,8 @@ class Resnet101(nn.Module):
             raise Exception("Norm not specified!")
 
         model = []
-        # Downsample, 256 -> 128 -> 64 -> 32 -> 16 -> 8, throw out last 4 layers from batch norm to FC
+        # Downsample, 256 -> 128 -> 64 -> 32 -> 16 -> 8, throw out last 4 layers from
+        # batch norm to FC
         res_original = models.resnet101(pretrained=False)
         model += list(res_original.children())[:-2]
 

@@ -4,7 +4,7 @@ import torch.nn as nn
 
 
 class HistLayer(nn.Module):
-    def __init__(self, in_channels, num_bins=4, dct=False, two_d=False):
+    def __init__(self, in_channels, num_bins=4, two_d=False):
 
         # inherit nn.module
         super(HistLayer, self).__init__()
@@ -18,7 +18,6 @@ class HistLayer(nn.Module):
         centers = bin_edges + (bin_edges[2] - bin_edges[1]) / 2
         self.centers = centers[:-1]
         self.width = (bin_edges[2] - bin_edges[1]) / 2
-        self.dct = dct
         self.two_d = two_d
 
         self.bin_centers_conv = nn.Conv2d(
@@ -55,8 +54,6 @@ class HistLayer(nn.Module):
         self.hist_pool = nn.AdaptiveAvgPool2d(1)
 
     def forward(self, xx):
-        if self.dct:
-            xx = torch_dct(xx)
         xx = self.bin_centers_conv(xx)
         xx = torch.abs(xx)
         xx = self.bin_widths_conv(xx)
@@ -150,3 +147,20 @@ def histogram_losses(hgram1, hgram2):
         emd += emd_loss(channel_hgram1[0], channel_hgram2[0])
         # mi += dmi(channel_hgram1[1], channel_hgram2[1])
     return emd / 3, mi / 3
+
+
+def rgb2yuv(xx):
+    # convert rgb to yuv
+    y = (0.299 * xx[:, 0, :, :]) + (0.587 * xx[:, 1, :, :]) + (0.114 * xx[:, 2, :, :])
+    u = (
+        (-0.14713 * xx[:, 0, :, :])
+        + (-0.28886 * xx[:, 1, :, :])
+        + (0.436 * xx[:, 2, :, :])
+    )
+    v = (
+        (0.615 * xx[:, 0, :, :])
+        + (-0.51499 * xx[:, 1, :, :])
+        + (-0.10001 * xx[:, 2, :, :])
+    )
+    xx = torch.stack([y, u, v], 1)
+    return xx

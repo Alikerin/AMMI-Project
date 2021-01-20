@@ -3,12 +3,11 @@ import os
 
 import imageio
 import numpy as np
-import scipy.misc
 import torch
 from torch.nn import init
 
-from histogram import *
-from model_modules import *
+from histogram import HistLayer, extract_1d_hist, extract_hist, histogram_losses
+from model_modules import Discriminator, Generator
 
 
 class GANModel:

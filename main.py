@@ -1,15 +1,14 @@
 import argparse
 import json
-import math
 import os
 import time
 
 import numpy as np
 import torch
+from visdom import Visdom
 
 import dataloader
 from gan_model import GANModel
-from visdom import Visdom
 
 parser = argparse.ArgumentParser()
 # Model
@@ -102,7 +101,7 @@ if __name__ == "__main__":
             args.out_dir,
             "%s%s"
             % (
-                time.strftime("%m%d%H%M%S"),
+                "output_" + time.strftime("%m%d%H%M%S"),
                 "_" + args.suffix if len(args.suffix) != 0 else "",
             ),
         )
@@ -158,7 +157,7 @@ if __name__ == "__main__":
         else:
             viz = Visdom()
 
-        startup_sec = 1
+        startup_sec = 1.0
         while not viz.check_connection() and startup_sec > 0:
             time.sleep(0.1)
             startup_sec -= 0.1

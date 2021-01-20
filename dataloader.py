@@ -12,9 +12,7 @@ class GANDataset(Dataset):
     # Initial logic here, including reading the image files and transform the data
     def __init__(self, root_AB, transform=None, device=None, test=False):
         # initialize image path and transformation
-        sorted_AB = sorted(
-            os.listdir(root_AB), key=lambda name: int(name.split("_")[0])
-        )
+        sorted_AB = sorted(os.listdir(root_AB), key=lambda name: int(name.split("_")[0]))
         self.image_pathsAB = list(map(lambda x: os.path.join(root_AB, x), sorted_AB))
 
         self.transform = transform
@@ -58,7 +56,7 @@ class GANDataset(Dataset):
         return len(self.image_pathsAB)  # of how many examples we have
 
 
-## return - DataLoader
+# return - DataLoader
 def get_dataloader(
     image_pathAB, batch_size, resize, crop, device=None, shuffle=True, test=False
 ):
