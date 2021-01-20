@@ -101,7 +101,7 @@ if __name__ == "__main__":
             args.out_dir,
             "%s%s"
             % (
-                "output_" + time.strftime("%m%d%H%M%S"),
+                "output_" + time.strftime("%m%d%H%M%S") + "_s",
                 "_" + args.suffix if len(args.suffix) != 0 else "",
             ),
         )

@@ -1,16 +1,36 @@
+from typing import List, Tuple
+
 import numpy as np
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 
 class HistLayer(nn.Module):
-    def __init__(self, in_channels, num_bins=4, two_d=False):
+    """Deep Neural Network Layer for Computing Differentiable Histogram.
 
-        # inherit nn.module
+    Computes a differentiable histogram using a hard-binning operation implemented using
+    CNN layers as desribed in `"Differentiable Histogram with Hard-Binning"
+    <https://arxiv.org/pdf/1512.03385.pdf>`_.
+
+    Attributes:
+        in_channel (int): Number of image input channels.
+        numBins (int): Number of histogram bins.
+        learnable (bool): Flag to determine whether histogram bin widths and centers are
+            learnable.
+        centers (List[float]): Histogram centers.
+        widths (List[float]): Histogram widths.
+        two_d (bool): Flag to return flattened or 2D histogram.
+        bin_centers_conv (nn.Module): 2D CNN layer with weight=1 and bias=`centers`.
+        bin_widths_conv (nn.Module): 2D CNN layer with weight=-1 and bias=`width`.
+        threshold (nn.Module): DNN layer for performing hard-binning.
+        hist_pool (nn.Module): Pooling layer.
+    """
+
+    def __init__(self, in_channels, num_bins=4, two_d=False):
         super(HistLayer, self).__init__()
 
-        # define layer properties
-        # histogram bin data
+        # histogram data
         self.in_channels = in_channels
         self.numBins = num_bins
         self.learnable = False
@@ -20,6 +40,7 @@ class HistLayer(nn.Module):
         self.width = (bin_edges[2] - bin_edges[1]) / 2
         self.two_d = two_d
 
+        # prepare NN layers for histogram computation
         self.bin_centers_conv = nn.Conv2d(
             self.in_channels,
             self.numBins * self.in_channels,
@@ -48,27 +69,48 @@ class HistLayer(nn.Module):
 
         self.centers = self.bin_centers_conv.bias
         self.widths = self.bin_widths_conv.weight
-
         self.threshold = nn.Threshold(1, 0)
-
         self.hist_pool = nn.AdaptiveAvgPool2d(1)
 
-    def forward(self, xx):
-        xx = self.bin_centers_conv(xx)
+    def forward(self, input_image):
+        """Computes differentiable histogram.
+
+        Args:
+            input_image: input image.
+
+        Returns:
+            flattened and un-flattened histogram.
+        """
+        # |x_i - u_k|
+        xx = self.bin_centers_conv(input_image)
         xx = torch.abs(xx)
+
+        # w_k - |x_i - u_k|
         xx = self.bin_widths_conv(xx)
+
+        # 1.01^(w_k - |x_i - u_k|)
         xx = torch.pow(torch.empty_like(xx).fill_(1.01), xx)
+
+        # Φ(1.01^(w_k - |x_i - u_k|), 1, 0)
         xx = self.threshold(xx)
+
+        # clean-up
         two_d = torch.flatten(xx, 2)
         xx = self.hist_pool(xx)
         one_d = torch.flatten(xx, 1)
         return one_d, two_d
 
 
-# _hist_layer = HistLayer(in_channels=1, num_bins=256).to(device)
-
-
 def emd_loss(hgram1, hgram2):
+    """Computes Earth Mover's Distance (EMD) between histograms
+
+    Args:
+        histogram_1: first histogram tensor, shape: batch_size x num_bins.
+        histogram_1: second histogram tensor, shape: batch_size x num_bins.
+
+    Returns:
+        EMD loss.
+    """
     return (
         ((torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1)) ** 2)
         .sum(1)
@@ -77,36 +119,65 @@ def emd_loss(hgram1, hgram2):
     )
 
 
-def mae_loss(y, y_pred):
-    return (torch.abs(y - y_pred)).sum(1).mean(-1).mean()
+def mae_loss(histogram_1: Tensor, histogram_2: Tensor) -> Tensor:
+    """Computes Mean Absolute Error (MAE) between histograms
 
+    Args:
+        histogram_1: first histogram tensor, shape: batch_size x num_bins.
+        histogram_1: second histogram tensor, shape: batch_size x num_bins.
 
-def mse_loss(y, y_pred):
-    return torch.pow(y - y_pred, 2).sum(1).mean(-1).mean()
-
-
-def extract_hist(layer, input):
+    Returns:
+        MAE loss.
     """
-    return tuple of (one_d, two_d) histogram for each channel
+    return (torch.abs(histogram_1 - histogram_2)).sum(1).mean(-1).mean()
+
+
+def mse_loss(histogram_1: Tensor, histogram_2: Tensor) -> Tensor:
+    """Computes Mean Squared Error (MSE) between histograms.
+
+    Args:
+        histogram_1: first histogram tensor, shape: batch_size x num_bins.
+        histogram_1: second histogram tensor, shape: batch_size x num_bins.
+
+    Returns:
+        MSE loss.
     """
-    _, num_ch, _, _ = input.shape
+    return torch.pow(histogram_1 - histogram_2, 2).sum(1).mean(-1).mean()
+
+
+def extract_hist(layer: HistLayer, image: Tensor) -> List[Tuple[Tensor, Tensor]]:
+    """Extracts both vector and 2D histogram.
+
+    Args:
+        layer: histogram layer.
+        image: input image tensor, shape: batch_size x num_channels x width x height.
+
+    Returns:
+        list of tuples containing 1d and 2d histograms for each channel.
+    """
+    _, num_ch, _, _ = image.shape
     hists = []
     for ch in range(num_ch):
-        hists.append(layer(input[:, ch, :, :].unsqueeze(1)))
-    #     hists = torch.stack(hists, 1)
+        hists.append(layer(image[:, ch, :, :].unsqueeze(1)))
     return hists
 
 
-def extract_1d_hist(layer, input):
+def extract_1d_hist(layer: HistLayer, image: Tensor) -> Tensor:
+    """Extracts histogram as a vector
+
+    Args:
+        layer: histogram layer.
+        image: input image tensor, shape: batch_size x num_channels x width x height.
+
+    Returns:
+        histogram tensor, shape: num_channels x num_bins.
     """
-    return tuple of (one_d, two_d) histogram for each channel
-    """
-    _, num_ch, _, _ = input.shape
+    _, num_ch, _, _ = image.shape
     hists = []
     for ch in range(num_ch):
-        hists.append(layer(input[:, ch, :, :].unsqueeze(1))[0])
-    hists = torch.stack(hists, 1)
-    return hists
+        hists.append(layer(image[:, ch, :, :].unsqueeze(1))[0])
+    all_hists = torch.stack(hists, 1)
+    return all_hists
 
 
 def mutual_information(hgram1, hgram2):
@@ -124,9 +195,7 @@ def mutual_information(hgram1, hgram2):
 
 
 def entropy(hgram1, hgram2):
-    """
-    Joint entropy of two histograms
-    """
+    """Joint entropy of two histograms"""
     pxy = torch.bmm(hgram1, hgram2.transpose(1, 2)) / hgram1.shape[-1]
     nz = pxy > 0
     return -torch.sum(pxy[nz] * torch.log(pxy[nz]))
@@ -136,31 +205,30 @@ def dmi(hgram1, hgram2):
     return 1 - (mutual_information(hgram1, hgram2) / entropy(hgram1, hgram2))
 
 
-def histogram_losses(hgram1, hgram2):
-    """
-    compute histogram losses (EMD and MI) for each channel
-    hgram1 and hgram2 are tuples of (one_d, two_d) histograms for each channel
+def histogram_losses(
+    histogram_1: List[Tensor], histogram_2: List[Tensor], loss_type: str = "emd"
+) -> Tuple[float, float]:
+    """Compute Histogram Losses.
+
+    Computes EMD and MI losses for each channel, then returns the mean.
+
+    Args:
+        histogram_1: first histogram tensor, shape: batch_size x num_channels x num_bins.
+        histogram_1: second histogram tensor, shape: batch_size x num_channels x num_bins
+        loss_type: type of loss function.
+
+    Returns:
+        Tuple containing mean of EMD and MI losses respectively.
     """
     emd = 0
     mi = 0
-    for channel_hgram1, channel_hgram2 in zip(hgram1, hgram2):
-        emd += emd_loss(channel_hgram1[0], channel_hgram2[0])
+    if loss_type == "emd":
+        loss_fn = emd_loss
+    elif loss_type == "mae":
+        loss_fn = mae_loss
+    else:
+        loss_fn = mse_loss
+    for channel_hgram1, channel_hgram2 in zip(histogram_1, histogram_2):
+        emd += loss_fn(channel_hgram1[0], channel_hgram2[0])
         # mi += dmi(channel_hgram1[1], channel_hgram2[1])
     return emd / 3, mi / 3
-
-
-def rgb2yuv(xx):
-    # convert rgb to yuv
-    y = (0.299 * xx[:, 0, :, :]) + (0.587 * xx[:, 1, :, :]) + (0.114 * xx[:, 2, :, :])
-    u = (
-        (-0.14713 * xx[:, 0, :, :])
-        + (-0.28886 * xx[:, 1, :, :])
-        + (0.436 * xx[:, 2, :, :])
-    )
-    v = (
-        (0.615 * xx[:, 0, :, :])
-        + (-0.51499 * xx[:, 1, :, :])
-        + (-0.10001 * xx[:, 2, :, :])
-    )
-    xx = torch.stack([y, u, v], 1)
-    return xx
