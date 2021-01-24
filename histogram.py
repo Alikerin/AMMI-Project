@@ -34,7 +34,7 @@ class HistLayer(nn.Module):
         self.in_channels = in_channels
         self.numBins = num_bins
         self.learnable = False
-        bin_edges = np.linspace(-1, 1, num_bins + 1)
+        bin_edges = np.linspace(-1.05, 1.05, num_bins + 1)
         centers = bin_edges + (bin_edges[2] - bin_edges[1]) / 2
         self.centers = centers[:-1]
         self.width = (bin_edges[2] - bin_edges[1]) / 2
@@ -96,7 +96,7 @@ class HistLayer(nn.Module):
 
         # clean-up
         two_d = torch.flatten(xx, 2)
-        xx = self.hist_pool(xx)
+        xx = self.hist_pool(xx)  # xx.sum([2, 3])
         one_d = torch.flatten(xx, 1)
         return one_d, two_d
 
@@ -154,6 +154,8 @@ def extract_hist(layer: HistLayer, image: Tensor) -> List[Tuple[Tensor, Tensor]]
 
     Returns:
         list of tuples containing 1d and 2d histograms for each channel.
+        1d histogram shape: batch_size x num_bins
+        2d histogram shape: batch_size x num_bins x width*height
     """
     _, num_ch, _, _ = image.shape
     hists = []
@@ -170,7 +172,7 @@ def extract_1d_hist(layer: HistLayer, image: Tensor) -> Tensor:
         image: input image tensor, shape: batch_size x num_channels x width x height.
 
     Returns:
-        histogram tensor, shape: num_channels x num_bins.
+        histogram tensor, shape: batch_size x num_channels x num_bins.
     """
     _, num_ch, _, _ = image.shape
     hists = []

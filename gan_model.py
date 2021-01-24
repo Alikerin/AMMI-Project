@@ -109,7 +109,6 @@ class GANModel:
 
         edge, img, img_idx = input
         histogram = extract_1d_hist(self.hist_layer, img)
-
         ############################
         # D loss
         ############################

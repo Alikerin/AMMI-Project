@@ -112,6 +112,69 @@ class DecoderBlock(nn.Module):
         return x
 
 
+# class Generator(nn.Module):
+#     def __init__(
+#         self, in_channels=3, out_channels=3, bias=False, dropout_prob=0.5, norm="batch"
+#     ):
+#         super(Generator, self).__init__()
+
+#         # 8-step encoder
+#         self.encoder1 = EncoderBlock(
+#             in_channels, 64, bias=bias, do_norm=False, do_activation=False
+#         )
+#         self.encoder2 = EncoderBlock(64, 128, bias=bias, norm=norm)
+#         self.encoder3 = EncoderBlock(128, 256, bias=bias, norm=norm)
+#         self.encoder4 = EncoderBlock(256, 512, bias=bias, norm=norm)
+#         self.encoder5 = EncoderBlock(512, 512, bias=bias, norm=norm)
+#         self.encoder6 = EncoderBlock(512, 512, bias=bias, norm=norm)
+#         self.encoder7 = EncoderBlock(512, 512, bias=bias, norm=norm)
+#         self.encoder8 = EncoderBlock(512, 512, bias=bias, do_norm=False)
+
+#         # 8-step UNet decoder
+#         self.decoder1 = DecoderBlock(1024, 512, bias=bias, norm=norm)
+#         self.decoder2 = DecoderBlock(
+#             1024, 512, bias=bias, norm=norm, dropout_prob=dropout_prob
+#         )
+#         self.decoder3 = DecoderBlock(
+#             1024, 512, bias=bias, norm=norm, dropout_prob=dropout_prob
+#         )
+#         self.decoder4 = DecoderBlock(
+#             1024, 512, bias=bias, norm=norm, dropout_prob=dropout_prob
+#         )
+#         self.decoder5 = DecoderBlock(1024, 256, bias=bias, norm=norm)
+#         self.decoder6 = DecoderBlock(512, 128, bias=bias, norm=norm)
+#         self.decoder7 = DecoderBlock(256, 64, bias=bias, norm=norm)
+#         self.decoder8 = DecoderBlock(128, out_channels, bias=bias, do_norm=False)
+
+#         self.hist_fc = nn.Linear(768, 512)
+
+#     def forward(self, x, hist):
+#         # 8-step encoder
+#         encode1 = self.encoder1(x)
+#         encode2 = self.encoder2(encode1)
+#         encode3 = self.encoder3(encode2)
+#         encode4 = self.encoder4(encode3)
+#         encode5 = self.encoder5(encode4)
+#         encode6 = self.encoder6(encode5)
+#         encode7 = self.encoder7(encode6)
+#         encode8 = self.encoder8(encode7)
+#         encode8 = torch.cat(
+#             [encode8, self.hist_fc(torch.flatten(hist, 1)).unsqueeze(-1).unsqueeze(-1)],
+#             1,
+#         )
+#         # 8-step UNet decoder
+#         decode1 = torch.cat([self.decoder1(encode8), encode7], 1)
+#         decode2 = torch.cat([self.decoder2(decode1), encode6], 1)
+#         decode3 = torch.cat([self.decoder3(decode2), encode5], 1)
+#         decode4 = torch.cat([self.decoder4(decode3), encode4], 1)
+#         decode5 = torch.cat([self.decoder5(decode4), encode3], 1)
+#         decode6 = torch.cat([self.decoder6(decode5), encode2], 1)
+#         decode7 = torch.cat([self.decoder7(decode6), encode1], 1)
+#         decode8 = self.decoder8(decode7)
+#         final = nn.Tanh()(decode8)
+#         return final
+
+
 class Generator(nn.Module):
     def __init__(
         self, in_channels=3, out_channels=3, bias=False, dropout_prob=0.5, norm="batch"
@@ -127,11 +190,10 @@ class Generator(nn.Module):
         self.encoder4 = EncoderBlock(256, 512, bias=bias, norm=norm)
         self.encoder5 = EncoderBlock(512, 512, bias=bias, norm=norm)
         self.encoder6 = EncoderBlock(512, 512, bias=bias, norm=norm)
-        self.encoder7 = EncoderBlock(512, 512, bias=bias, norm=norm)
-        self.encoder8 = EncoderBlock(512, 512, bias=bias, do_norm=False)
+        self.encoder7 = EncoderBlock(512, 512, bias=bias, do_norm=False)
 
         # 8-step UNet decoder
-        self.decoder1 = DecoderBlock(1024, 512, bias=bias, norm=norm)
+        self.decoder1 = DecoderBlock(512 * 2, 512, bias=bias, norm=norm)
         self.decoder2 = DecoderBlock(
             1024, 512, bias=bias, norm=norm, dropout_prob=dropout_prob
         )
@@ -141,10 +203,9 @@ class Generator(nn.Module):
         self.decoder4 = DecoderBlock(
             1024, 512, bias=bias, norm=norm, dropout_prob=dropout_prob
         )
-        self.decoder5 = DecoderBlock(1024, 256, bias=bias, norm=norm)
-        self.decoder6 = DecoderBlock(512, 128, bias=bias, norm=norm)
-        self.decoder7 = DecoderBlock(256, 64, bias=bias, norm=norm)
-        self.decoder8 = DecoderBlock(128, out_channels, bias=bias, do_norm=False)
+        self.decoder5 = DecoderBlock(768, 256, bias=bias, norm=norm)
+        self.decoder6 = DecoderBlock(384, 128, bias=bias, norm=norm)
+        self.decoder7 = DecoderBlock(192, out_channels, bias=bias, do_norm=False)
 
         self.hist_fc = nn.Linear(768, 512)
 
@@ -157,21 +218,21 @@ class Generator(nn.Module):
         encode5 = self.encoder5(encode4)
         encode6 = self.encoder6(encode5)
         encode7 = self.encoder7(encode6)
-        encode8 = self.encoder8(encode7)
-        encode8 = torch.cat(
-            [encode8, self.hist_fc(torch.flatten(hist, 1)).unsqueeze(-1).unsqueeze(-1)],
+        encode7 = torch.cat(
+            [encode7, self.hist_fc(torch.flatten(hist, 1)).unsqueeze(-1).unsqueeze(-1)],
             1,
         )
+
+        # print(encode7.shape)
         # 8-step UNet decoder
-        decode1 = torch.cat([self.decoder1(encode8), encode7], 1)
-        decode2 = torch.cat([self.decoder2(decode1), encode6], 1)
-        decode3 = torch.cat([self.decoder3(decode2), encode5], 1)
-        decode4 = torch.cat([self.decoder4(decode3), encode4], 1)
-        decode5 = torch.cat([self.decoder5(decode4), encode3], 1)
-        decode6 = torch.cat([self.decoder6(decode5), encode2], 1)
-        decode7 = torch.cat([self.decoder7(decode6), encode1], 1)
-        decode8 = self.decoder8(decode7)
-        final = nn.Tanh()(decode8)
+        decode1 = torch.cat([self.decoder1(encode7), encode6], 1)
+        decode2 = torch.cat([self.decoder2(decode1), encode5], 1)
+        decode3 = torch.cat([self.decoder3(decode2), encode4], 1)
+        decode4 = torch.cat([self.decoder4(decode3), encode3], 1)
+        decode5 = torch.cat([self.decoder5(decode4), encode2], 1)
+        decode6 = torch.cat([self.decoder6(decode5), encode1], 1)
+        decode7 = self.decoder7(decode6)
+        final = nn.Tanh()(decode7)
         return final
 
 
