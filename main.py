@@ -15,6 +15,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--unaligned", default=False, type=bool)
 parser.add_argument("--resize", default=286, type=int)
 parser.add_argument("--crop", default=256, type=int)
+parser.add_argument(
+    "--no_flip",
+    action="store_true",
+    help="if specified, do not flip the images for data augmentation",
+)
+parser.add_argument(
+    "--preprocess",
+    type=str,
+    default="resize_and_crop",
+    help="scaling and cropping of images at load time [resize_and_crop | crop | \
+        scale_width | scale_width_and_crop | none]",
+)
 # Training
 parser.add_argument("--device_id", default=0, type=int)
 parser.add_argument("--mode", default="train", type=str)
@@ -118,6 +130,7 @@ if __name__ == "__main__":
 
         # load data
         train_loader = dataloader.get_dataloader(
+            args,
             os.path.join(args.data_dir, "train"),
             resize=args.resize,
             crop=args.crop,
@@ -127,6 +140,7 @@ if __name__ == "__main__":
             device=device,
         )
         val_loader = dataloader.get_dataloader(
+            args,
             os.path.join(args.data_dir, "val"),
             resize=args.resize,
             crop=args.crop,
@@ -142,6 +156,7 @@ if __name__ == "__main__":
 
         # load data
         test_loader = dataloader.get_dataloader(
+            args,
             os.path.join(args.data_dir, "testA"),
             resize=args.resize,
             crop=args.crop,

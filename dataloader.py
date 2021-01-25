@@ -10,14 +10,23 @@ from torchvision import transforms
 class GANDataset(Dataset):
 
     # Initial logic here, including reading the image files and transform the data
-    def __init__(self, root_AB, transform=None, device=None, test=False):
+    def __init__(self, args, root_AB, device=None, test=False):
         # initialize image path and transformation
         sorted_AB = sorted(os.listdir(root_AB), key=lambda name: int(name.split("_")[0]))
         self.image_pathsAB = list(map(lambda x: os.path.join(root_AB, x), sorted_AB))
 
-        self.transform = transform
         self.device = device
         self.test = test
+        self.opt = args
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(
+                    args.crop, Image.BICUBIC
+                ),  # resize to crop size directly
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
 
     # override to support indexing
     def __getitem__(self, index):
@@ -31,17 +40,16 @@ class GANDataset(Dataset):
         imageB = AB.crop((w2, 0, w, h))
 
         # transform the images if needed
-        if self.transform is not None:
-            if self.test:
-                imageA = self.transform(imageA)
-                imageB = self.transform(imageB)
-            else:  # if test is False, need to crop and flip the same way
-                # setting the same seed for input and target tansformations
-                seed = np.random.randint(2147483647)
-                random.seed(seed)
-                imageA = self.transform(imageA)
-                random.seed(seed)
-                imageB = self.transform(imageB)
+        if self.test:
+            imageA = self.transform(imageA)
+            imageB = self.transform(imageB)
+        else:
+            transform_params = get_params(self.opt, imageA.size)
+            A_transform = get_transform(self.opt, transform_params)
+            B_transform = get_transform(self.opt, transform_params)
+
+            imageA = A_transform(imageA)
+            imageB = B_transform(imageB)
 
         # convert to GPU tensor
         if self.device is not None:
@@ -58,32 +66,121 @@ class GANDataset(Dataset):
 
 # return - DataLoader
 def get_dataloader(
-    image_pathAB, batch_size, resize, crop, device=None, shuffle=True, test=False
+    args, image_pathAB, batch_size, resize, crop, device=None, shuffle=True, test=False
 ):
-    if test:
-        transform = transforms.Compose(
-            [
-                transforms.Resize(crop, Image.BICUBIC),  # resize to crop size directly
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
-    else:
-        transform = transforms.Compose(
-            [
-                # resize PIL image to given size
-                transforms.Resize(resize, Image.BICUBIC),
-                # crop image at randomn location
-                transforms.RandomCrop(crop),
-                # flip images randomly
-                transforms.RandomHorizontalFlip(),
-                # convert image input into torch tensor
-                transforms.ToTensor(),
-                # normalize image with mean and standard deviation
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
-
-    batch_dataset = GANDataset(image_pathAB, transform, device, test)
+    batch_dataset = GANDataset(args, image_pathAB, device, test)
 
     return DataLoader(dataset=batch_dataset, batch_size=batch_size, shuffle=shuffle)
+
+
+# code below is adapted from
+# https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/data/base_dataset.py
+
+
+def get_params(opt, size):
+    w, h = size
+    new_h = h
+    new_w = w
+    if opt.preprocess == "resize_and_crop":
+        new_h = new_w = opt.resize
+    elif opt.preprocess == "scale_width_and_crop":
+        new_w = opt.resize
+        new_h = opt.resize * h // w
+
+    x = random.randint(0, np.maximum(0, new_w - opt.crop))
+    y = random.randint(0, np.maximum(0, new_h - opt.crop))
+
+    flip = random.random() > 0.5
+
+    return {"crop_pos": (x, y), "flip": flip}
+
+
+def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
+    transform_list = []
+    if grayscale:
+        transform_list.append(transforms.Grayscale(1))
+    if "resize" in opt.preprocess:
+        osize = [opt.resize, opt.resize]
+        transform_list.append(transforms.Resize(osize, method))
+    elif "scale_width" in opt.preprocess:
+        transform_list.append(
+            transforms.Lambda(
+                lambda img: __scale_width(img, opt.resize, opt.crop, method)
+            )
+        )
+
+    if "crop" in opt.preprocess:
+        if params is None:
+            transform_list.append(transforms.RandomCrop(opt.crop))
+        else:
+            transform_list.append(
+                transforms.Lambda(lambda img: __crop(img, params["crop_pos"], opt.crop))
+            )
+
+    if opt.preprocess == "none":
+        transform_list.append(
+            transforms.Lambda(lambda img: __make_power_2(img, base=4, method=method))
+        )
+
+    if not opt.no_flip:
+        if params is None:
+            transform_list.append(transforms.RandomHorizontalFlip())
+        elif params["flip"]:
+            transform_list.append(
+                transforms.Lambda(lambda img: __flip(img, params["flip"]))
+            )
+
+    if convert:
+        transform_list += [transforms.ToTensor()]
+        if grayscale:
+            transform_list += [transforms.Normalize((0.5,), (0.5,))]
+        else:
+            transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+    return transforms.Compose(transform_list)
+
+
+def __make_power_2(img, base, method=Image.BICUBIC):
+    ow, oh = img.size
+    h = int(round(oh / base) * base)
+    w = int(round(ow / base) * base)
+    if h == oh and w == ow:
+        return img
+
+    __print_size_warning(ow, oh, w, h)
+    return img.resize((w, h), method)
+
+
+def __scale_width(img, target_size, crop, method=Image.BICUBIC):
+    ow, oh = img.size
+    if ow == target_size and oh >= crop:
+        return img
+    w = target_size
+    h = int(max(target_size * oh / ow, crop))
+    return img.resize((w, h), method)
+
+
+def __crop(img, pos, size):
+    ow, oh = img.size
+    x1, y1 = pos
+    tw = th = size
+    if ow > tw or oh > th:
+        return img.crop((x1, y1, x1 + tw, y1 + th))
+    return img
+
+
+def __flip(img, flip):
+    if flip:
+        return img.transpose(Image.FLIP_LEFT_RIGHT)
+    return img
+
+
+def __print_size_warning(ow, oh, w, h):
+    """Print warning information about image size(only print once)"""
+    if not hasattr(__print_size_warning, "has_printed"):
+        print(
+            "The image size needs to be a multiple of 4. "
+            "The loaded image size was (%d, %d), so it was adjusted to "
+            "(%d, %d). This adjustment will be done to all images "
+            "whose sizes are not multiples of 4" % (ow, oh, w, h)
+        )
+        __print_size_warning.has_printed = True
