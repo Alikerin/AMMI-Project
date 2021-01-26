@@ -145,7 +145,9 @@ def mse_loss(histogram_1: Tensor, histogram_2: Tensor) -> Tensor:
     return torch.pow(histogram_1 - histogram_2, 2).sum(1).mean(-1).mean()
 
 
-def extract_hist(layer: HistLayer, image: Tensor) -> List[Tuple[Tensor, Tensor]]:
+def extract_hist(
+    layer: HistLayer, image: Tensor, one_d=False, color_space="RGB"
+) -> List[Tuple[Tensor, Tensor]]:
     """Extracts both vector and 2D histogram.
 
     Args:
@@ -153,33 +155,20 @@ def extract_hist(layer: HistLayer, image: Tensor) -> List[Tuple[Tensor, Tensor]]
         image: input image tensor, shape: batch_size x num_channels x width x height.
 
     Returns:
-        list of tuples containing 1d and 2d histograms for each channel.
+        list of tuples containing 1d (and 2d histograms) for each channel.
         1d histogram shape: batch_size x num_bins
         2d histogram shape: batch_size x num_bins x width*height
     """
     _, num_ch, _, _ = image.shape
+    # convert to desired color space
+    if color_space == "YUV":
+        image = rgb2yuv(image)
     hists = []
     for ch in range(num_ch):
         hists.append(layer(image[:, ch, :, :].unsqueeze(1)))
+    if one_d:
+        return [one_d_hist for (one_d_hist, _) in hists]
     return hists
-
-
-def extract_1d_hist(layer: HistLayer, image: Tensor) -> Tensor:
-    """Extracts histogram as a vector
-
-    Args:
-        layer: histogram layer.
-        image: input image tensor, shape: batch_size x num_channels x width x height.
-
-    Returns:
-        histogram tensor, shape: batch_size x num_channels x num_bins.
-    """
-    _, num_ch, _, _ = image.shape
-    hists = []
-    for ch in range(num_ch):
-        hists.append(layer(image[:, ch, :, :].unsqueeze(1))[0])
-    all_hists = torch.stack(hists, 1)
-    return all_hists
 
 
 def mutual_information(hgram1, hgram2):
@@ -234,3 +223,32 @@ def histogram_losses(
         emd += loss_fn(channel_hgram1[0], channel_hgram2[0])
         # mi += dmi(channel_hgram1[1], channel_hgram2[1])
     return emd / 3, mi / 3
+
+
+def rgb2yuv(image: Tensor):
+    """Converts image from RGB to YUV color space.
+
+    Arguments:
+        image: batch of images with shape (batch_size x num_channels x width x height).
+
+    Returns:
+        batch of images in YUV color space with shape
+        (batch_size x num_channels x width x height).
+    """
+    y = (
+        (0.299 * image[:, 0, :, :])
+        + (0.587 * image[:, 1, :, :])
+        + (0.114 * image[:, 2, :, :])
+    )
+    u = (
+        (-0.14713 * image[:, 0, :, :])
+        + (-0.28886 * image[:, 1, :, :])
+        + (0.436 * image[:, 2, :, :])
+    )
+    v = (
+        (0.615 * image[:, 0, :, :])
+        + (-0.51499 * image[:, 1, :, :])
+        + (-0.10001 * image[:, 2, :, :])
+    )
+    image = torch.stack([y, u, v], 1)
+    return image

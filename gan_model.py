@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.nn import init
 
-from histogram import HistLayer, extract_1d_hist, extract_hist, histogram_losses
+from histogram import HistLayer, extract_hist, histogram_losses
 from model_modules import Discriminator, Generator
 
 
@@ -108,7 +108,13 @@ class GANModel:
         # self.D.train()
 
         edge, img, img_idx = input
-        histogram = extract_1d_hist(self.hist_layer, img)
+        # convert list of one_d histogram into a tensor of multi-channel histogram
+        histogram = torch.stack(
+            extract_hist(
+                self.hist_layer, img, one_d=True, color_space=self.args.color_space
+            ),
+            1,
+        )
         ############################
         # D loss
         ############################
@@ -139,8 +145,8 @@ class GANModel:
         #         loss_G_L1 = self.L1_loss_fn(gen, y) * self.lambd
 
         # histogram loss
-        h_real = extract_hist(self.hist_layer, img)
-        h_gen = extract_hist(self.hist_layer, gen)
+        h_real = extract_hist(self.hist_layer, img, color_space=self.args.color_space)
+        h_gen = extract_hist(self.hist_layer, gen, color_space=self.args.color_space)
         emd_loss, mi_loss = histogram_losses(h_real, h_gen)
         loss_G_EMD = self.lambda_emd * emd_loss
         loss_G_MI = self.lambda_mi * mi_loss
@@ -175,7 +181,13 @@ class GANModel:
 
         with torch.no_grad():
             edge, img, img_idx = input
-            histogram = extract_1d_hist(self.hist_layer, img)
+            # convert list of one_d histogram into a tensor of multi-channel histogram
+            histogram = torch.stack(
+                extract_hist(
+                    self.hist_layer, img, one_d=True, color_space=self.args.color_space
+                ),
+                1,
+            )
             gen = self.G(edge, histogram)
 
             # self.save_image((x, gen, y), 'datasets/maps/samples', '2018')
@@ -197,8 +209,10 @@ class GANModel:
             loss_G_gan = self.gan_loss(self.D(gen, edge), 1)
 
             # histogram loss
-            h_real = extract_hist(self.hist_layer, img)
-            h_gen = extract_hist(self.hist_layer, gen)
+            h_real = extract_hist(
+                self.hist_layer, img, color_space=self.args.color_space
+            )
+            h_gen = extract_hist(self.hist_layer, gen, color_space=self.args.color_space)
             emd_loss, mi_loss = histogram_losses(h_real, h_gen)
             loss_G_EMD = self.lambda_emd * emd_loss
             loss_G_MI = self.lambda_mi * mi_loss
@@ -227,7 +241,13 @@ class GANModel:
     def test(self, images, i, out_dir_img):
         with torch.no_grad():
             A, B, img_idx = images
-            histogram = extract_1d_hist(self.hist_layer, B)
+            # convert list of one_d histogram into a tensor of multi-channel histogram
+            histogram = torch.stack(
+                extract_hist(
+                    self.hist_layer, B, one_d=True, color_space=self.args.color_space
+                ),
+                1,
+            )
             gen = self.G(A, histogram)
             score_gen = self.D(gen, A).mean()
             score_gt = self.D(B, A).mean()
