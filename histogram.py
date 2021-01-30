@@ -146,7 +146,7 @@ def mse_loss(histogram_1: Tensor, histogram_2: Tensor) -> Tensor:
 
 
 def extract_hist(
-    layer: HistLayer, image: Tensor, one_d=False, color_space="RGB"
+    layer: HistLayer, image: Tensor, one_d: bool = False
 ) -> List[Tuple[Tensor, Tensor]]:
     """Extracts both vector and 2D histogram.
 
@@ -160,9 +160,6 @@ def extract_hist(
         2d histogram shape: batch_size x num_bins x width*height
     """
     _, num_ch, _, _ = image.shape
-    # convert to desired color space
-    if color_space == "YUV":
-        image = rgb2yuv(image)
     hists = []
     for ch in range(num_ch):
         hists.append(layer(image[:, ch, :, :].unsqueeze(1)))

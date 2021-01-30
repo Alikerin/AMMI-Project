@@ -29,13 +29,13 @@ Should choose the CycleGAN one in the format of
 ### Train model from scratch
 
 ```bash
-python main.py --mode train --data_dir [data_directory] --n_epoch 200 --G resnet9 --gan_loss MSE
+python main.py --mode train --data_dir [data_directory] --out_dir [output_directory] --n_epoch 300 --gan_loss MSE --resize 143 --crop 128 --batch_size 20 --color_space YCbCr 
 ```
 Default ```data_dir``` is ```./datasets/maps/```. Source (A) and target (B) images should be in folders trainA/trainB, valA/valB, testA/testB separately.
 
 ### Continue train using pretrained model
 ```bash
-python main.py --mode train --pretrain_path ./checkpoints/xxx/xxx.pt
+python main.py --mode train --data_dir [data_directory] --out_dir [output_directory] --n_epoch 300 --gan_loss MSE --resize 143 --crop 128 --batch_size 20  --pretrain_path ./checkpoints/xxx/xxx.pt
 ```
 Need to provide same configs/options when continue to train a model.
 
@@ -55,7 +55,7 @@ python main.py -h
 
 ## Testing
 ```bash
-python main.py --mode test --pretrain_path ./checkpoints/xxx/xxx.pt
+python main.py --mode test --crop 128 --resize 143 --data_dir datasets/edges2shoes --pretrain_path ./checkpoints/xxx/xxx.pt --color_space YCbCr --color_ref path/to/reference/image.jpg
 ```
 This generates all images from test set and save them to ./checkpoints/xxx/images/test/.
 

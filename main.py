@@ -5,6 +5,8 @@ import time
 
 import numpy as np
 import torch
+from PIL import Image
+from torchvision import transforms
 from visdom import Visdom
 
 import dataloader
@@ -31,7 +33,7 @@ parser.add_argument(
     "--color_space",
     type=str,
     default="RBG",
-    help="color space for histogram extraction [RGB | YUV]",
+    help="color space for histogram extraction [RGB | YCbCr | LAB]",
 )
 # Training
 parser.add_argument("--device_id", default=0, type=int)
@@ -78,6 +80,9 @@ parser.add_argument("--lambd_d", default=0.5, type=float, help="D loss scale")
 parser.add_argument("--lambda_emd", default=0.5, type=float, help="EMD Loss Scale")
 parser.add_argument("--lambda_mi", default=0.5, type=float, help="MI loss scale")
 parser.add_argument(
+    "--color_ref", default="", type=str, help="Color reference image path"
+)
+parser.add_argument(
     "--d_update_frequency",
     default=1,
     type=int,
@@ -103,6 +108,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     device = torch.device(
         "cuda:%d" % args.device_id if torch.cuda.is_available() else "cpu"
+    )
+    c_transform = transforms.Compose(
+        [
+            transforms.Resize(
+                [args.crop, args.crop], Image.BICUBIC
+            ),  # resize to crop size directly
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
     )
 
     s = "Using %s\n\n" % device
@@ -157,13 +171,15 @@ if __name__ == "__main__":
         )  # TODO val batch size
     if args.mode == "test":
         out_dir = os.path.dirname(args.pretrain_path)
-        out_dir_img = os.path.join(out_dir, "images", "test")
-        os.mkdir(out_dir_img)
+        out_dir_img = os.path.join(
+            out_dir, "images", "test_" + time.strftime("%m%d%H%M%S") + "_s"
+        )
+        os.makedirs(out_dir_img, exist_ok=True)
 
         # load data
         test_loader = dataloader.get_dataloader(
             args,
-            os.path.join(args.data_dir, "testA"),
+            os.path.join(args.data_dir, "test"),
             resize=args.resize,
             crop=args.crop,
             shuffle=False,
@@ -207,7 +223,7 @@ if __name__ == "__main__":
             start_epoch = checkpoint["epoch"] + 1
             model.load_state(checkpoint["model_state"])
         if args.mode == "test":
-            checkpoint = torch.load(args.pretrain_path)
+            checkpoint = torch.load(args.pretrain_path, map_location=device)
             model.load_state(checkpoint["model_state"])
 
     model.set_start_epoch(start_epoch)
@@ -409,7 +425,14 @@ if __name__ == "__main__":
             if i >= args.save_n_img:
                 break
             # model.test(images, i, out_dir_img)
-
+            # add color-reference image
+            if args.color_ref:
+                color_ref_img = Image.open(args.color_ref).convert(args.color_space)
+                color_ref_img = c_transform(color_ref_img)
+                color_ref_img = color_ref_img.to(device).unsqueeze(0)
+                images.append(color_ref_img)
+            else:
+                images.append(None)
             score_gen, score_gt = model.test(images, i, out_dir_img)
             score_gen = round(float(score_gen), 6)
             score_gt = round(float(score_gt), 6)

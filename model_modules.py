@@ -207,7 +207,7 @@ class Generator(nn.Module):
         self.decoder6 = DecoderBlock(384, 128, bias=bias, norm=norm)
         self.decoder7 = DecoderBlock(192, out_channels, bias=bias, do_norm=False)
 
-        self.hist_fc = nn.Linear(768, 512)
+        self.hist_fc = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
 
     def forward(self, x, hist):
         # 8-step encoder

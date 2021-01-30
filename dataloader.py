@@ -18,13 +18,16 @@ class GANDataset(Dataset):
         self.device = device
         self.test = test
         self.opt = args
+        self.mean = (0.5, 0.5, 0.5)
+        self.std = (0.5, 0.5, 0.5)
+        self.color_space = args.color_space
         self.transform = transforms.Compose(
             [
                 transforms.Resize(
                     args.crop, Image.BICUBIC
                 ),  # resize to crop size directly
                 transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                transforms.Normalize(self.mean, self.std),
             ]
         )
 
@@ -32,7 +35,7 @@ class GANDataset(Dataset):
     def __getitem__(self, index):
 
         AB_path = self.image_pathsAB[index]
-        AB = Image.open(AB_path).convert("RGB")
+        AB = Image.open(AB_path).convert(self.color_space)
         # split AB image into A and B
         w, h = AB.size
         w2 = int(w / 2)
@@ -45,8 +48,8 @@ class GANDataset(Dataset):
             imageB = self.transform(imageB)
         else:
             transform_params = get_params(self.opt, imageA.size)
-            A_transform = get_transform(self.opt, transform_params)
-            B_transform = get_transform(self.opt, transform_params)
+            A_transform = get_transform(self.opt, self.mean, self.std, transform_params)
+            B_transform = get_transform(self.opt, self.mean, self.std, transform_params)
 
             imageA = A_transform(imageA)
             imageB = B_transform(imageB)
@@ -95,7 +98,9 @@ def get_params(opt, size):
     return {"crop_pos": (x, y), "flip": flip}
 
 
-def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
+def get_transform(
+    opt, mean, std, params=None, grayscale=False, method=Image.BICUBIC, convert=True
+):
     transform_list = []
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
@@ -133,9 +138,9 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
     if convert:
         transform_list += [transforms.ToTensor()]
         if grayscale:
-            transform_list += [transforms.Normalize((0.5,), (0.5,))]
+            transform_list += [transforms.Normalize((mean[0],), (std[0],))]
         else:
-            transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+            transform_list += [transforms.Normalize(mean, std)]
     return transforms.Compose(transform_list)
 
 
