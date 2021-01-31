@@ -1,6 +1,7 @@
 import os
 import random
 
+import cv2
 import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
@@ -23,6 +24,7 @@ class GANDataset(Dataset):
         self.color_space = args.color_space
         self.transform = transforms.Compose(
             [
+                transforms.ToPILImage(),
                 transforms.Resize(
                     args.crop, Image.BICUBIC
                 ),  # resize to crop size directly
@@ -35,19 +37,29 @@ class GANDataset(Dataset):
     def __getitem__(self, index):
 
         AB_path = self.image_pathsAB[index]
-        AB = Image.open(AB_path).convert(self.color_space)
+        AB = cv2.imread(AB_path)
+
+        # color conversion
+        # opencv reads color image as BGR
+        if self.color_space == "YCbCr":
+            AB = cv2.cvtColor(AB, cv2.COLOR_BGR2YCrCb)
+        elif self.color_space == "LAB":
+            AB = cv2.cvtColor(AB, cv2.COLOR_BGR2Lab)
+        elif self.color_space == "LUV":
+            AB = cv2.cvtColor(AB, cv2.COLOR_BGR2Luv)
+
         # split AB image into A and B
-        w, h = AB.size
+        h, w, _ = AB.shape
         w2 = int(w / 2)
-        imageA = AB.crop((0, 0, w2, h))
-        imageB = AB.crop((w2, 0, w, h))
+        imageA = AB[0:h, 0:w2]
+        imageB = AB[0:h, w2:w]
 
         # transform the images if needed
         if self.test:
             imageA = self.transform(imageA)
             imageB = self.transform(imageB)
         else:
-            transform_params = get_params(self.opt, imageA.size)
+            transform_params = get_params(self.opt, imageA.shape[:-1])
             A_transform = get_transform(self.opt, self.mean, self.std, transform_params)
             B_transform = get_transform(self.opt, self.mean, self.std, transform_params)
 
@@ -81,7 +93,7 @@ def get_dataloader(
 
 
 def get_params(opt, size):
-    w, h = size
+    h, w = size
     new_h = h
     new_w = w
     if opt.preprocess == "resize_and_crop":
@@ -101,7 +113,7 @@ def get_params(opt, size):
 def get_transform(
     opt, mean, std, params=None, grayscale=False, method=Image.BICUBIC, convert=True
 ):
-    transform_list = []
+    transform_list = [transforms.ToPILImage()]
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
     if "resize" in opt.preprocess:

@@ -1,9 +1,9 @@
 import itertools
 import os
 
+import cv2
 import numpy as np
 import torch
-from PIL import Image
 from torch.nn import init
 
 from histogram import HistLayer, extract_hist, histogram_losses
@@ -159,7 +159,6 @@ class GANModel:
                 (edge[0].unsqueeze(0), img[0].unsqueeze(0), gen[0].unsqueeze(0)),
                 out_dir_img,
                 "train_ep_%d_img_%d" % (epoch, img_idx[0]),
-                mode=self.color_space,
             )
 
         return {
@@ -216,7 +215,6 @@ class GANModel:
                 (edge[0].unsqueeze(0), img[0].unsqueeze(0), gen[0].unsqueeze(0)),
                 out_dir_img,
                 "val_ep_%d_img_%d" % (epoch, img_idx[0]),
-                mode=self.color_space,
             )
 
         return {
@@ -239,11 +237,7 @@ class GANModel:
             score_gen = self.D(gen, A).mean()
             score_gt = self.D(B, A).mean()
             self.save_image(
-                (A, B, gen),
-                out_dir_img,
-                "test_%d" % img_idx,
-                test=True,
-                mode=self.color_space,
+                (A, B, gen), out_dir_img, "test_%d" % img_idx, test=True,
             )
         return score_gen, score_gt
 
@@ -277,7 +271,7 @@ class GANModel:
             "optimD": self.optimizer_D.state_dict(),
         }
 
-    def save_image(self, input, filepath, fname, mode="RGB", test=False):
+    def save_image(self, input, filepath, fname, test=False):
         """ input is a tuple of the images we want to compare """
         A, B, gen = input
 
@@ -285,13 +279,28 @@ class GANModel:
             img = self.tensor2image(gen)
             path = os.path.join(filepath, "%s.png" % fname)
             img = img.squeeze().transpose(1, 2, 0)
-            img = Image.fromarray(img, mode).convert("RGB")
-            img.save(path)
+            # color conversion
+            # opencv reads color image as BGR
+            if self.color_space == "YCbCr":
+                img = cv2.cvtColor(img, cv2.COLOR_YCrCb2BGR)
+            elif self.color_space == "LAB":
+                img = cv2.cvtColor(img, cv2.COLOR_Lab2BGR)
+            elif self.color_space == "LUV":
+                img = cv2.cvtColor(img, cv2.COLOR_Luv2BGR)
+            cv2.imwrite(path, img)
+
         else:
             merged = self.tensor2image(self.merge_images(A, B, gen))
             path = os.path.join(filepath, "%s.png" % fname)
-            img = Image.fromarray(merged, mode).convert("RGB")
-            img.save(path)
+            # color conversion
+            # opencv reads color image as BGR
+            if self.color_space == "YCbCr":
+                merged = cv2.cvtColor(merged, cv2.COLOR_YCrCb2BGR)
+            elif self.color_space == "LAB":
+                merged = cv2.cvtColor(merged, cv2.COLOR_Lab2BGR)
+            elif self.color_space == "LUV":
+                merged = cv2.cvtColor(merged, cv2.COLOR_Luv2BGR)
+            cv2.imwrite(path, merged)
 
         print("saved %s" % path)
 
