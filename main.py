@@ -29,12 +29,7 @@ parser.add_argument(
     help="scaling and cropping of images at load time [resize_and_crop | crop | \
         scale_width | scale_width_and_crop | none]",
 )
-parser.add_argument(
-    "--color_space",
-    type=str,
-    default="RBG",
-    help="color space for histogram extraction [RGB | YCbCr | LAB]",
-)
+
 # Training
 parser.add_argument("--device_id", default=0, type=int)
 parser.add_argument("--mode", default="train", type=str)
@@ -77,10 +72,15 @@ parser.add_argument("--n_epoch", default=100, type=int)
 parser.add_argument("--beta1", default=0.5, type=float, help="momentum term of adam")
 parser.add_argument("--lambd", default=100.0, type=float, help="weight for L1 loss")
 parser.add_argument("--lambd_d", default=0.5, type=float, help="D loss scale")
-parser.add_argument("--lambda_emd", default=0.5, type=float, help="EMD Loss Scale")
-parser.add_argument("--lambda_mi", default=0.5, type=float, help="MI loss scale")
+parser.add_argument("--lambda_h", default=1.0, type=float, help="Histogram Loss Scale")
 parser.add_argument(
     "--color_ref", default="", type=str, help="Color reference image path"
+)
+parser.add_argument(
+    "--hist_loss",
+    default="emd",
+    type=str,
+    help="Histogram loss function: emd | mae | mse",
 )
 parser.add_argument(
     "--d_update_frequency",

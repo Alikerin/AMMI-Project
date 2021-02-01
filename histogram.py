@@ -3,6 +3,7 @@ from typing import List, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -34,7 +35,7 @@ class HistLayer(nn.Module):
         self.in_channels = in_channels
         self.numBins = num_bins
         self.learnable = False
-        bin_edges = np.linspace(-1.05, 1.05, num_bins + 1)
+        bin_edges = np.linspace(-0.05, 1.05, num_bins + 1)
         centers = bin_edges + (bin_edges[2] - bin_edges[1]) / 2
         self.centers = centers[:-1]
         self.width = (bin_edges[2] - bin_edges[1]) / 2
@@ -232,6 +233,8 @@ def rgb2yuv(image: Tensor):
         batch of images in YUV color space with shape
         (batch_size x num_channels x width x height).
     """
+    # convert from [-1, 1] to [0, 1]
+    image = (image + 1) / 2
     y = (
         (0.299 * image[:, 0, :, :])
         + (0.587 * image[:, 1, :, :])
@@ -249,3 +252,98 @@ def rgb2yuv(image: Tensor):
     )
     image = torch.stack([y, u, v], 1)
     return image
+
+
+class HistogramLoss(nn.Module):
+    def __init__(self, loss_fn, num_bins, rgb=True, yuv=True, yuvgrad=True):
+        super().__init__()
+        self.rgb = rgb
+        self.yuv = yuv
+        self.yuvgrad = yuvgrad
+        self.histlayer = HistLayer(in_channels=1, num_bins=num_bins)
+        loss_dict = {"emd": emd_loss, "mae": mae_loss, "mse": mse_loss}
+        self.loss_fn = loss_dict[loss_fn]
+
+    def get_image_gradients(self, input):
+        f_v_1 = F.pad(input, (0, -1, 0, 0))
+        f_v_2 = F.pad(input, (-1, 0, 0, 0))
+        f_v = f_v_1 - f_v_2
+
+        f_h_1 = F.pad(input, (0, 0, 0, -1))
+        f_h_2 = F.pad(input, (0, 0, -1, 0))
+        f_h = f_h_1 - f_h_2
+
+        return f_v, f_h
+
+    def to_YUV(self, image):
+        y = (
+            (0.299 * image[:, 0, :, :])
+            + (0.587 * image[:, 1, :, :])
+            + (0.114 * image[:, 2, :, :])
+        )
+        u = (
+            (-0.14713 * image[:, 0, :, :])
+            + (-0.28886 * image[:, 1, :, :])
+            + (0.436 * image[:, 2, :, :])
+        )
+        v = (
+            (0.615 * image[:, 0, :, :])
+            + (-0.51499 * image[:, 1, :, :])
+            + (-0.10001 * image[:, 2, :, :])
+        )
+        image = torch.stack([y, u, v], 1)
+        return image
+
+    def extract_hist(self, image, one_d=False):
+        """Extracts both vector and 2D histogram.
+
+        Args:
+            layer: histogram layer.
+            image: input image tensor, shape: batch_size x num_channels x width x height.
+
+        Returns:
+            list of tuples containing 1d (and 2d histograms) for each channel.
+            1d histogram shape: batch_size x num_bins
+            2d histogram shape: batch_size x num_bins x width*height
+        """
+        _, num_ch, _, _ = image.shape
+        hists = []
+        for ch in range(num_ch):
+            hists.append(self.histlayer(image[:, ch, :, :].unsqueeze(1)))
+        if one_d:
+            return [one_d_hist for (one_d_hist, _) in hists]
+        return hists
+
+    def hist_loss(self, histogram_1, histogram_2):
+        loss = 0
+        for channel_hgram1, channel_hgram2 in zip(histogram_1, histogram_2):
+            loss += self.loss_fn(channel_hgram1[0], channel_hgram2[0])
+        return loss
+
+    def __call__(self, input, reference):
+        # comment these lines when you inputs and outputs are in [0,1] range already
+        input = (input + 1) / 2
+        reference = (reference + 1) / 2
+        total_loss = 0
+        if self.rgb:
+            total_loss += self.hist_loss(
+                self.extract_hist(input), self.extract_hist(reference)
+            )
+        if self.yuv:
+            input_yuv = self.to_YUV(input)
+            reference_yuv = self.to_YUV(reference)
+            total_loss += self.hist_loss(
+                self.extract_hist(input_yuv), self.extract_hist(reference_yuv)
+            )
+        if self.yuvgrad:
+            input_v, input_h = self.get_image_gradients(input_yuv)
+            ref_v, ref_h = self.get_image_gradients(reference_yuv)
+
+            total_loss += self.hist_loss(
+                self.extract_hist(input_v), self.extract_hist(ref_v)
+            )
+            total_loss += self.hist_loss(
+                self.extract_hist(input_h), self.extract_hist(ref_h)
+            )
+
+        return total_loss

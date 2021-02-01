@@ -21,7 +21,6 @@ class GANDataset(Dataset):
         self.opt = args
         self.mean = (0.5, 0.5, 0.5)
         self.std = (0.5, 0.5, 0.5)
-        self.color_space = args.color_space
         self.transform = transforms.Compose(
             [
                 transforms.ToPILImage(),
@@ -38,15 +37,7 @@ class GANDataset(Dataset):
 
         AB_path = self.image_pathsAB[index]
         AB = cv2.imread(AB_path)
-
-        # color conversion
-        # opencv reads color image as BGR
-        if self.color_space == "YCbCr":
-            AB = cv2.cvtColor(AB, cv2.COLOR_BGR2YCrCb)
-        elif self.color_space == "LAB":
-            AB = cv2.cvtColor(AB, cv2.COLOR_BGR2Lab)
-        elif self.color_space == "LUV":
-            AB = cv2.cvtColor(AB, cv2.COLOR_BGR2Luv)
+        AB = cv2.cvtColor(AB, cv2.COLOR_BGR2RGB)
 
         # split AB image into A and B
         h, w, _ = AB.shape

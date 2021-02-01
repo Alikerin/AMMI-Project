@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.nn import init
 
-from histogram import HistLayer, extract_hist, histogram_losses
+from histogram import HistogramLoss
 from model_modules import Discriminator, Generator
 
 
@@ -14,11 +14,10 @@ class GANModel:
     def __init__(self, args):
         self.start_epoch = 0
         self.args = args
-        self.color_space = args.color_space
 
         self.G = Generator()
         self.D = Discriminator()
-        self.hist_layer = HistLayer(in_channels=1, num_bins=256)
+        self.histogram_loss = HistogramLoss(loss_fn=args.hist_loss, num_bins=256)
 
         self.init_type = args.init_type
         if args.init_type is not None:
@@ -48,8 +47,7 @@ class GANModel:
 
         self.lambd = args.lambd
         self.lambd_d = args.lambd_d
-        self.lambda_emd = args.lambda_emd
-        self.lambda_mi = args.lambda_mi
+        self.lambda_h = args.lambda_h
 
         self.d_update_frequency = args.d_update_frequency
 
@@ -95,7 +93,7 @@ class GANModel:
     def to(self, device):
         self.G.to(device)
         self.D.to(device)
-        self.hist_layer.to(device)
+        self.histogram_loss.histlayer.to(device)
 
         for state in itertools.chain(
             self.optimizer_G.state.values(), self.optimizer_D.state.values()
@@ -110,7 +108,7 @@ class GANModel:
 
         edge, img, img_idx = input
         # convert list of one_d histogram into a tensor of multi-channel histogram
-        histogram = torch.stack(extract_hist(self.hist_layer, img, one_d=True), 1,)
+        histogram = torch.stack(self.histogram_loss.extract_hist(img, one_d=True), 1,)
         ############################
         # D loss
         ############################
@@ -141,14 +139,10 @@ class GANModel:
         #         loss_G_L1 = self.L1_loss_fn(gen, y) * self.lambd
 
         # histogram loss
-        h_real = extract_hist(self.hist_layer, img)
-        h_gen = extract_hist(self.hist_layer, gen)
-        emd_loss, mi_loss = histogram_losses(h_real, h_gen)
-        loss_G_EMD = self.lambda_emd * emd_loss
-        loss_G_MI = self.lambda_mi * mi_loss
+        loss_hist = self.lambda_h * self.histogram_loss(img, gen)
 
         # Combine
-        loss_G = loss_G_gan + loss_G_MI + loss_G_EMD
+        loss_G = loss_G_gan + loss_hist
 
         loss_G.backward()
         self.optimizer_G.step()
@@ -164,8 +158,7 @@ class GANModel:
         return {
             "G": loss_G,
             "G_gan": loss_G_gan,
-            "G_MI": loss_G_MI,
-            "G_EMD": loss_G_EMD,
+            "G_H": loss_hist,
             "D": loss_D,
             "D_real": loss_D_real,
             "D_fake": loss_D_fake,
@@ -178,7 +171,9 @@ class GANModel:
         with torch.no_grad():
             edge, img, img_idx = input
             # convert list of one_d histogram into a tensor of multi-channel histogram
-            histogram = torch.stack(extract_hist(self.hist_layer, img, one_d=True), 1,)
+            histogram = torch.stack(
+                self.histogram_loss.extract_hist(img, one_d=True), 1,
+            )
             gen = self.G(edge, histogram)
 
             # self.save_image((x, gen, y), 'datasets/maps/samples', '2018')
@@ -200,14 +195,10 @@ class GANModel:
             loss_G_gan = self.gan_loss(self.D(gen, edge), 1)
 
             # histogram loss
-            h_real = extract_hist(self.hist_layer, img)
-            h_gen = extract_hist(self.hist_layer, gen)
-            emd_loss, mi_loss = histogram_losses(h_real, h_gen)
-            loss_G_EMD = self.lambda_emd * emd_loss
-            loss_G_MI = self.lambda_mi * mi_loss
+            loss_hist = self.lambda_h * self.histogram_loss(img, gen)
 
             # Combine
-            loss_G = loss_G_gan + loss_G_MI + loss_G_EMD
+            loss_G = loss_G_gan + loss_hist
 
         # save image
         if save:
@@ -220,8 +211,7 @@ class GANModel:
         return {
             "G": loss_G,
             "G_gan": loss_G_gan,
-            "G_MI": loss_G_MI,
-            "G_EMD": loss_G_EMD,
+            "G_H": loss_hist,
             "D": loss_D,
             "D_real": loss_D_real,
             "D_fake": loss_D_fake,
@@ -232,7 +222,7 @@ class GANModel:
             A, B, img_idx, C = images
             # convert list of one_d histogram into a tensor of multi-channel histogram
             C = C if C is not None else B
-            histogram = torch.stack(extract_hist(self.hist_layer, C, one_d=True), 1,)
+            histogram = torch.stack(self.histogram_loss.extract_hist(C, one_d=True), 1,)
             gen = self.G(A, histogram)
             score_gen = self.D(gen, A).mean()
             score_gt = self.D(B, A).mean()
@@ -277,29 +267,15 @@ class GANModel:
 
         if test:
             img = self.tensor2image(gen)
-            path = os.path.join(filepath, "%s.png" % fname)
             img = img.squeeze().transpose(1, 2, 0)
-            # color conversion
-            # opencv reads color image as BGR
-            if self.color_space == "YCbCr":
-                img = cv2.cvtColor(img, cv2.COLOR_YCrCb2BGR)
-            elif self.color_space == "LAB":
-                img = cv2.cvtColor(img, cv2.COLOR_Lab2BGR)
-            elif self.color_space == "LUV":
-                img = cv2.cvtColor(img, cv2.COLOR_Luv2BGR)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            path = os.path.join(filepath, "%s.png" % fname)
             cv2.imwrite(path, img)
 
         else:
             merged = self.tensor2image(self.merge_images(A, B, gen))
+            merged = cv2.cvtColor(merged, cv2.COLOR_RGB2BGR)
             path = os.path.join(filepath, "%s.png" % fname)
-            # color conversion
-            # opencv reads color image as BGR
-            if self.color_space == "YCbCr":
-                merged = cv2.cvtColor(merged, cv2.COLOR_YCrCb2BGR)
-            elif self.color_space == "LAB":
-                merged = cv2.cvtColor(merged, cv2.COLOR_Lab2BGR)
-            elif self.color_space == "LUV":
-                merged = cv2.cvtColor(merged, cv2.COLOR_Luv2BGR)
             cv2.imwrite(path, merged)
 
         print("saved %s" % path)
