@@ -306,6 +306,8 @@ class HistogramLoss(nn.Module):
             1d histogram shape: batch_size x num_bins
             2d histogram shape: batch_size x num_bins x width*height
         """
+        # comment next line if image is in [0,1] range
+        image = (image + 1) / 2
         _, num_ch, _, _ = image.shape
         hists = []
         for ch in range(num_ch):
@@ -321,9 +323,6 @@ class HistogramLoss(nn.Module):
         return loss
 
     def __call__(self, input, reference):
-        # comment these lines when you inputs and outputs are in [0,1] range already
-        input = (input + 1) / 2
-        reference = (reference + 1) / 2
         total_loss = 0
         if self.rgb:
             total_loss += self.hist_loss(
@@ -347,3 +346,54 @@ class HistogramLoss(nn.Module):
             )
 
         return total_loss
+
+
+class GPLoss(nn.Module):
+    def __init__(self):
+        super(GPLoss, self).__init__()
+        self.trace = SPLoss()
+
+    def get_image_gradients(self, input):
+        f_v_1 = F.pad(input, (0, -1, 0, 0))
+        f_v_2 = F.pad(input, (-1, 0, 0, 0))
+        f_v = f_v_1 - f_v_2
+
+        f_h_1 = F.pad(input, (0, 0, 0, -1))
+        f_h_2 = F.pad(input, (0, 0, -1, 0))
+        f_h = f_h_1 - f_h_2
+
+        return f_v, f_h
+
+    def __call__(self, input, reference):
+        ## comment these lines when you inputs and outputs are in [0,1] range already
+        input = (input + 1) / 2
+        reference = (reference + 1) / 2
+
+        input_v, input_h = self.get_image_gradients(input)
+        ref_v, ref_h = self.get_image_gradients(reference)
+
+        trace_v = self.trace(input_v, ref_v)
+        trace_h = self.trace(input_h, ref_h)
+        return trace_v + trace_h
+
+
+class SPLoss(nn.Module):
+    def __init__(self):
+        super(SPLoss, self).__init__()
+
+    def __call__(self, input, reference):
+        a = torch.sum(
+            torch.sum(
+                F.normalize(input, p=2, dim=2) * F.normalize(reference, p=2, dim=2),
+                dim=2,
+                keepdim=True,
+            )
+        )
+        b = torch.sum(
+            torch.sum(
+                F.normalize(input, p=2, dim=3) * F.normalize(reference, p=2, dim=3),
+                dim=3,
+                keepdim=True,
+            )
+        )
+        return -(a + b) / input.size(2)

@@ -63,15 +63,9 @@ parser.add_argument("--batch_size", default=1, type=int)
 parser.add_argument("--dropout", default=0.5, type=float)
 parser.add_argument("--bias", default=False, type=bool)
 parser.add_argument("--norm", default="batch", type=str, help="batch|instance|none")
-parser.add_argument(
-    "--G", default="unet", type=str, help="unet|resnet6|resnet9|resnet50|resnet101"
-)
-parser.add_argument("--D", default="patch", type=str, help="patch|image")
-parser.add_argument("--gan_loss", default="BCE", type=str, help="BCE|MSE")
 parser.add_argument("--n_epoch", default=100, type=int)
-parser.add_argument("--beta1", default=0.5, type=float, help="momentum term of adam")
-parser.add_argument("--lambd", default=100.0, type=float, help="weight for L1 loss")
-parser.add_argument("--lambd_d", default=0.5, type=float, help="D loss scale")
+parser.add_argument("--beta1", default=0.9, type=float, help="momentum term of adam")
+parser.add_argument("--lambda_g", default=1.0, type=float, help="weight for L1 loss")
 parser.add_argument("--lambda_h", default=1.0, type=float, help="Histogram Loss Scale")
 parser.add_argument(
     "--color_ref", default="", type=str, help="Color reference image path"

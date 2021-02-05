@@ -1,4 +1,3 @@
-import itertools
 import os
 
 import cv2
@@ -6,8 +5,8 @@ import numpy as np
 import torch
 from torch.nn import init
 
-from histogram import HistogramLoss
-from model_modules import Discriminator, Generator
+from histogram import GPLoss, HistogramLoss
+from model_modules import Generator
 
 
 class GANModel:
@@ -16,40 +15,23 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.D = Discriminator()
         self.histogram_loss = HistogramLoss(loss_fn=args.hist_loss, num_bins=256)
 
         self.init_type = args.init_type
         if args.init_type is not None:
             self.G.apply(self.init_weights)
-            self.D.apply(self.init_weights)
 
         self.optimizer_G = torch.optim.Adam(
             self.G.parameters(), lr=args.lr, betas=(args.beta1, 0.999)
-        )
-        self.optimizer_D = torch.optim.Adam(
-            self.D.parameters(), lr=args.lr, betas=(args.beta1, 0.999)
         )
 
         self.scheduler_G = torch.optim.lr_scheduler.LambdaLR(
             self.optimizer_G, lr_lambda=self.lr_lambda
         )
-        self.scheduler_D = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer_D, lr_lambda=self.lr_lambda
-        )
 
-        if args.gan_loss == "BCE":
-            self.gan_loss_fn = torch.nn.BCELoss()
-        elif args.gan_loss == "MSE":
-            self.gan_loss_fn = torch.nn.MSELoss()
-        else:
-            raise NotImplementedError("GAN loss function error")
-
-        self.lambd = args.lambd
-        self.lambd_d = args.lambd_d
+        self.gan_loss = GPLoss()
+        self.lambda_g = args.lambda_g
         self.lambda_h = args.lambda_h
-
-        self.d_update_frequency = args.d_update_frequency
 
     def lr_lambda(self, epoch):
         return 1.0 - max(0, epoch + self.start_epoch - self.args.lr_decay_start) / (
@@ -77,69 +59,43 @@ class GANModel:
 
     def update_scheduler(self):
         self.scheduler_G.step()
-        self.scheduler_D.step()
         print("learning rate = %.7f" % self.optimizer_G.param_groups[0]["lr"])
-
-    def d_update(self, d_loss, epoch):
-        # d_update_frequency = n epochs per update
-        # d_update_epoch = list(range(1,300,int(1/self.d_update_frequency)))
-        if epoch % self.d_update_frequency == 0:
-            d_loss.backward()
-            self.optimizer_D.step()
 
     def set_start_epoch(self, epoch):
         self.start_epoch = epoch
 
     def to(self, device):
         self.G.to(device)
-        self.D.to(device)
         self.histogram_loss.histlayer.to(device)
 
-        for state in itertools.chain(
-            self.optimizer_G.state.values(), self.optimizer_D.state.values()
-        ):
-            for k, v in state.items():
-                if isinstance(v, torch.Tensor):
-                    state[k] = v.to(device)
+        # for state in itertools.chain(
+        #     self.optimizer_G.state.values(), self.optimizer_D.state.values()
+        # ):
+        #     for k, v in state.items():
+        #         if isinstance(v, torch.Tensor):
+        #             state[k] = v.to(device)
 
     def train(self, input, save, out_dir_img, epoch, i):
-        # self.G.train()
-        # self.D.train()
-
         edge, img, img_idx = input
         # convert list of one_d histogram into a tensor of multi-channel histogram
-        histogram = torch.stack(self.histogram_loss.extract_hist(img, one_d=True), 1,)
-        ############################
-        # D loss
-        ############################
-        self.optimizer_D.zero_grad()
+        histogram = torch.stack(
+            self.histogram_loss.extract_hist(
+                self.histogram_loss.to_YUV(img), one_d=True
+            ),
+            1,
+        )
 
-        gen = self.G(edge, histogram)
-        # real y and x -> 1
-        loss_D_real = self.gan_loss(self.D(img, edge), 1) * self.lambd_d
-        # gen and x -> 0
-        loss_D_fake = self.gan_loss(self.D(gen.detach(), edge), 0) * self.lambd_d
-        # Combine
-        loss_D = loss_D_real + loss_D_fake
-
-        self.d_update(loss_D, i)
-        # loss_D.backward()
-        # self.optimizer_D.step()
-
-        # self.save_image((x, gen, y), 'datasets/maps/samples', '2018')
         ############################
         # G loss
         ############################
         self.optimizer_G.zero_grad()
+        gen = self.G(edge, histogram)
 
-        # gen = self.G(x)
         # GAN loss of G
-        loss_G_gan = self.gan_loss(self.D(gen, edge), 1)
-        # L1 loss of G
-        #         loss_G_L1 = self.L1_loss_fn(gen, y) * self.lambd
+        loss_G_gan = self.gan_loss(gen, img)
 
         # histogram loss
-        loss_hist = self.lambda_h * self.histogram_loss(img, gen)
+        loss_hist = self.lambda_h * self.histogram_loss(gen, img)
 
         # Combine
         loss_G = loss_G_gan + loss_hist
@@ -159,43 +115,28 @@ class GANModel:
             "G": loss_G,
             "G_gan": loss_G_gan,
             "G_H": loss_hist,
-            "D": loss_D,
-            "D_real": loss_D_real,
-            "D_fake": loss_D_fake,
         }
 
     def eval(self, input, save, out_dir_img, epoch):
-        # self.G.eval()
-        # self.D.eval()
-
         with torch.no_grad():
             edge, img, img_idx = input
             # convert list of one_d histogram into a tensor of multi-channel histogram
             histogram = torch.stack(
-                self.histogram_loss.extract_hist(img, one_d=True), 1,
+                self.histogram_loss.extract_hist(
+                    self.histogram_loss.to_YUV(img), one_d=True
+                ),
+                1,
             )
             gen = self.G(edge, histogram)
-
-            # self.save_image((x, gen, y), 'datasets/maps/samples', '2018')
-
-            ############################
-            # D loss
-            ############################
-            # real y and x -> 1
-            loss_D_real = self.gan_loss(self.D(img, edge), 1) * self.lambd_d
-            # gen and x -> 0
-            loss_D_fake = self.gan_loss(self.D(gen, edge), 0) * self.lambd_d
-            # Combine
-            loss_D = loss_D_real + loss_D_fake
 
             ############################
             # G loss
             ############################
             # GAN loss of G
-            loss_G_gan = self.gan_loss(self.D(gen, edge), 1)
+            loss_G_gan = self.gan_loss(gen, img)
 
             # histogram loss
-            loss_hist = self.lambda_h * self.histogram_loss(img, gen)
+            loss_hist = self.lambda_h * self.histogram_loss(gen, img)
 
             # Combine
             loss_G = loss_G_gan + loss_hist
@@ -212,9 +153,6 @@ class GANModel:
             "G": loss_G,
             "G_gan": loss_G_gan,
             "G_H": loss_hist,
-            "D": loss_D,
-            "D_real": loss_D_real,
-            "D_fake": loss_D_fake,
         }
 
     def test(self, images, i, out_dir_img):
@@ -222,33 +160,26 @@ class GANModel:
             A, B, img_idx, C = images
             # convert list of one_d histogram into a tensor of multi-channel histogram
             C = C if C is not None else B
-            histogram = torch.stack(self.histogram_loss.extract_hist(C, one_d=True), 1,)
+            histogram = torch.stack(
+                self.histogram_loss.extract_hist(
+                    self.histogram_loss.to_YUV(C), one_d=True
+                ),
+                1,
+            )
             gen = self.G(A, histogram)
-            score_gen = self.D(gen, A).mean()
-            score_gt = self.D(B, A).mean()
             self.save_image(
                 (A, B, gen), out_dir_img, "test_%d" % img_idx, test=True,
             )
-        return score_gen, score_gt
-
-    def gan_loss(self, out, label):
-        return self.gan_loss_fn(
-            out, torch.ones_like(out) if label else torch.zeros_like(out)
-        )
+        return 0, 0
 
     def load_state(self, state, lr=None):
         print("Using pretrained model...")
         self.G.load_state_dict(state["G"])
-        self.D.load_state_dict(state["D"])
         self.optimizer_G.load_state_dict(state["optimG"])
-        self.optimizer_D.load_state_dict(state["optimD"])
 
         # set model lr to new lr
         if lr is not None:
             for param_group in self.optimizer_G.param_groups:
-                before = param_group["lr"]
-                param_group["lr"] = lr
-            for param_group in self.optimizer_D.param_groups:
                 before = param_group["lr"]
                 param_group["lr"] = lr
             print("optim lr: before={} / after={}".format(before, lr))
@@ -256,9 +187,7 @@ class GANModel:
     def save_state(self):
         return {
             "G": self.G.state_dict(),
-            "D": self.D.state_dict(),
             "optimG": self.optimizer_G.state_dict(),
-            "optimD": self.optimizer_D.state_dict(),
         }
 
     def save_image(self, input, filepath, fname, test=False):
@@ -286,18 +215,10 @@ class GANModel:
         return image.astype(np.uint8)
 
     def merge_images(self, sources, targets, generated):
-        # row, _, h, w = sources.shape
         row, _, h, w = sources.size()
-        # row = int(np.sqrt(batch_size))
-        # merged = np.zeros([3, row * h, w * 3])
         merged = torch.zeros([3, row * h, w * 3])
         for idx, (s, t, g) in enumerate(zip(sources, targets, generated)):
             i = idx
-            # i = (idx + 1) // row
-            # j = idx % row
-            # merged[:, i * h:(i + 1) * h, (j * 2) * w:(j * 2 + 1) * w] = s
-            # merged[:, i * h:(i + 1) * h, (j*2+1) * w:(j * 2 + 2) * w] = t
-            # merged[:, i * h:(i + 1) * h, (j*2+2) * w:(j * 2 + 3) * w] = c
             merged[:, i * h : (i + 1) * h, 0:w] = s
             merged[:, i * h : (i + 1) * h, w : 2 * w] = g
             merged[:, i * h : (i + 1) * h, 2 * w : 3 * w] = t
