@@ -15,7 +15,9 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.histogram_loss = HistogramLoss(loss_fn=args.hist_loss, num_bins=256)
+        self.histogram_loss = HistogramLoss(
+            loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
+        )
 
         self.init_type = args.init_type
         if args.init_type is not None:

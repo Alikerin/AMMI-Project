@@ -365,7 +365,7 @@ class GPLoss(nn.Module):
         return f_v, f_h
 
     def __call__(self, input, reference):
-        ## comment these lines when you inputs and outputs are in [0,1] range already
+        # comment these lines when you inputs and outputs are in [0,1] range already
         input = (input + 1) / 2
         reference = (reference + 1) / 2
 
