@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch.nn import init
 
-from histogram import GPLoss, HistogramLoss
+from histogram import CPLoss, GPLoss, HistogramLoss
 from model_modules import Generator
 
 
@@ -15,9 +15,10 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.histogram_loss = HistogramLoss(
-            loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
-        )
+        self.histogram_loss = CPLoss(rgb=False, yuvgrad=False)
+        # HistogramLoss(
+        #     loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
+        # )
 
         self.init_type = args.init_type
         if args.init_type is not None:
