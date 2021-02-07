@@ -5,3 +5,4 @@
 datasets/
 checkpoints/
 outputs/
+*ipynb

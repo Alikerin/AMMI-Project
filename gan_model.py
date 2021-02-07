@@ -15,10 +15,10 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.histogram_loss = CPLoss(rgb=False, yuvgrad=True)
-        # HistogramLoss(
-        #     loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
-        # )
+        # self.histogram_loss = CPLoss(rgb=False, yuvgrad=True)
+        self.histogram_loss = HistogramLoss(
+            loss_fn=args.hist_loss, rgb=False, yuvgrad=args.yuvgrad, num_bins=256
+        )
 
         self.init_type = args.init_type
         if args.init_type is not None:
@@ -34,7 +34,8 @@ class GANModel:
 
         self.gan_loss = GPLoss()
         self.lambda_g = args.lambda_g
-        self.lambda_h = args.lambda_h
+        self.lambda_mi = args.lambda_mi
+        self.lambda_emd = args.lambda_emd
 
     def lr_lambda(self, epoch):
         return 1.0 - max(0, epoch + self.start_epoch - self.args.lr_decay_start) / (
@@ -71,13 +72,6 @@ class GANModel:
         self.G.to(device)
         self.histogram_loss.histlayer.to(device)
 
-        # for state in itertools.chain(
-        #     self.optimizer_G.state.values(), self.optimizer_D.state.values()
-        # ):
-        #     for k, v in state.items():
-        #         if isinstance(v, torch.Tensor):
-        #             state[k] = v.to(device)
-
     def train(self, input, save, out_dir_img, epoch, i):
         edge, img, img_idx = input
         # convert list of one_d histogram into a tensor of multi-channel histogram
@@ -98,10 +92,15 @@ class GANModel:
         loss_G_gan = self.gan_loss(gen, img)
 
         # histogram loss
-        loss_hist = self.lambda_h * self.histogram_loss(gen, img)
+        emd_loss, mi_loss = self.histogram_loss(img, gen)
+        loss_hist = emd_loss + mi_loss
 
         # Combine
-        loss_G = loss_G_gan + loss_hist
+        loss_G = (
+            (self.lambda_g * loss_G_gan)
+            + (self.lambda_emd * emd_loss)
+            + (self.lambda_mi * mi_loss)
+        )
 
         loss_G.backward()
         self.optimizer_G.step()
@@ -118,6 +117,8 @@ class GANModel:
             "G": loss_G,
             "G_gan": loss_G_gan,
             "G_H": loss_hist,
+            "MI": mi_loss,
+            "EMD": emd_loss,
         }
 
     def eval(self, input, save, out_dir_img, epoch):
@@ -139,10 +140,15 @@ class GANModel:
             loss_G_gan = self.gan_loss(gen, img)
 
             # histogram loss
-            loss_hist = self.lambda_h * self.histogram_loss(gen, img)
+            emd_loss, mi_loss = self.histogram_loss(img, gen)
+            loss_hist = emd_loss + mi_loss
 
             # Combine
-            loss_G = loss_G_gan + loss_hist
+            loss_G = (
+                (self.lambda_g * loss_G_gan)
+                + (self.lambda_emd * emd_loss)
+                + (self.lambda_mi * mi_loss)
+            )
 
         # save image
         if save:
@@ -156,6 +162,8 @@ class GANModel:
             "G": loss_G,
             "G_gan": loss_G_gan,
             "G_H": loss_hist,
+            "MI": mi_loss,
+            "EMD": emd_loss,
         }
 
     def test(self, images, i, out_dir_img):
