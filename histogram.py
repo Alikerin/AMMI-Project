@@ -96,7 +96,7 @@ class HistLayer(nn.Module):
         xx = self.threshold(xx)
 
         # clean-up
-        two_d = torch.flatten(xx, 2)
+        two_d = torch.flatten(xx, 2) / (input_image.shape[-1] * input_image.shape[-1])
         xx = self.hist_pool(xx)  # xx.sum([2, 3])
         one_d = torch.flatten(xx, 1)
         return one_d, two_d
@@ -113,10 +113,7 @@ def emd_loss(hgram1, hgram2):
         EMD loss.
     """
     return (
-        ((torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1)) ** 2)
-        .sum(1)
-        .mean(-1)
-        .mean()
+        ((torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1)) ** 2).sum(1).mean()
     )
 
 
@@ -146,116 +143,8 @@ def mse_loss(histogram_1: Tensor, histogram_2: Tensor) -> Tensor:
     return torch.pow(histogram_1 - histogram_2, 2).sum(1).mean(-1).mean()
 
 
-def extract_hist(
-    layer: HistLayer, image: Tensor, one_d: bool = False
-) -> List[Tuple[Tensor, Tensor]]:
-    """Extracts both vector and 2D histogram.
-
-    Args:
-        layer: histogram layer.
-        image: input image tensor, shape: batch_size x num_channels x width x height.
-
-    Returns:
-        list of tuples containing 1d (and 2d histograms) for each channel.
-        1d histogram shape: batch_size x num_bins
-        2d histogram shape: batch_size x num_bins x width*height
-    """
-    _, num_ch, _, _ = image.shape
-    hists = []
-    for ch in range(num_ch):
-        hists.append(layer(image[:, ch, :, :].unsqueeze(1)))
-    if one_d:
-        return [one_d_hist for (one_d_hist, _) in hists]
-    return hists
-
-
-def mutual_information(hgram1, hgram2):
-    """Mutual information for joint histogram"""
-    pxy = torch.bmm(hgram1, hgram2.transpose(1, 2)) / hgram1.shape[-1]
-    pxy += 1e-6
-    px = torch.sum(pxy, axis=1)  # marginal for x over y
-    py = torch.sum(pxy, axis=0)  # marginal for y over x
-    px_py = px[:, None] * py[None, :]  # Broadcast to multiply marginals
-    # Now we can do the calculation using the pxy, px_py 2D arrays
-    nzs = pxy > 0  # Only non-zero pxy values contribute to the sum
-    s = pxy[nzs] * torch.log(pxy[nzs] / px_py[nzs])
-    #     s = pxy * torch.log(pxy / px_py)
-    return torch.sum(s)
-
-
-def entropy(hgram1, hgram2):
-    """Joint entropy of two histograms"""
-    pxy = torch.bmm(hgram1, hgram2.transpose(1, 2)) / hgram1.shape[-1]
-    nz = pxy > 0
-    return -torch.sum(pxy[nz] * torch.log(pxy[nz]))
-
-
-def dmi(hgram1, hgram2):
-    return 1 - (mutual_information(hgram1, hgram2) / entropy(hgram1, hgram2))
-
-
-def histogram_losses(
-    histogram_1: List[Tensor], histogram_2: List[Tensor], loss_type: str = "emd"
-) -> Tuple[float, float]:
-    """Compute Histogram Losses.
-
-    Computes EMD and MI losses for each channel, then returns the mean.
-
-    Args:
-        histogram_1: first histogram tensor, shape: batch_size x num_channels x num_bins.
-        histogram_1: second histogram tensor, shape: batch_size x num_channels x num_bins
-        loss_type: type of loss function.
-
-    Returns:
-        Tuple containing mean of EMD and MI losses respectively.
-    """
-    emd = 0
-    mi = 0
-    if loss_type == "emd":
-        loss_fn = emd_loss
-    elif loss_type == "mae":
-        loss_fn = mae_loss
-    else:
-        loss_fn = mse_loss
-    for channel_hgram1, channel_hgram2 in zip(histogram_1, histogram_2):
-        emd += loss_fn(channel_hgram1[0], channel_hgram2[0])
-        # mi += dmi(channel_hgram1[1], channel_hgram2[1])
-    return emd / 3, mi / 3
-
-
-def rgb2yuv(image: Tensor):
-    """Converts image from RGB to YUV color space.
-
-    Arguments:
-        image: batch of images with shape (batch_size x num_channels x width x height).
-
-    Returns:
-        batch of images in YUV color space with shape
-        (batch_size x num_channels x width x height).
-    """
-    # convert from [-1, 1] to [0, 1]
-    image = (image + 1) / 2
-    y = (
-        (0.299 * image[:, 0, :, :])
-        + (0.587 * image[:, 1, :, :])
-        + (0.114 * image[:, 2, :, :])
-    )
-    u = (
-        (-0.14713 * image[:, 0, :, :])
-        + (-0.28886 * image[:, 1, :, :])
-        + (0.436 * image[:, 2, :, :])
-    )
-    v = (
-        (0.615 * image[:, 0, :, :])
-        + (-0.51499 * image[:, 1, :, :])
-        + (-0.10001 * image[:, 2, :, :])
-    )
-    image = torch.stack([y, u, v], 1)
-    return image
-
-
 class HistogramLoss(nn.Module):
-    def __init__(self, loss_fn, num_bins, rgb=True, yuv=True, yuvgrad=True):
+    def __init__(self, loss_fn, num_bins, rgb=False, yuv=True, yuvgrad=False):
         super().__init__()
         self.rgb = rgb
         self.yuv = yuv
@@ -276,6 +165,15 @@ class HistogramLoss(nn.Module):
         return f_v, f_h
 
     def to_YUV(self, image):
+        """Converts image from RGB to YUV color space.
+
+        Arguments:
+            image: batch of images with shape (batch_size x num_channels x width x height).
+
+        Returns:
+            batch of images in YUV color space with shape
+            (batch_size x num_channels x width x height).
+        """
         y = (
             (0.299 * image[:, 0, :, :])
             + (0.587 * image[:, 1, :, :])
@@ -306,6 +204,8 @@ class HistogramLoss(nn.Module):
             1d histogram shape: batch_size x num_bins
             2d histogram shape: batch_size x num_bins x width*height
         """
+        # comment these lines when you inputs and outputs are in [0,1] range already
+        image = (image + 1) / 2
         _, num_ch, _, _ = image.shape
         hists = []
         for ch in range(num_ch):
@@ -314,36 +214,90 @@ class HistogramLoss(nn.Module):
             return [one_d_hist for (one_d_hist, _) in hists]
         return hists
 
-    def hist_loss(self, histogram_1, histogram_2):
-        loss = 0
+    @staticmethod
+    def entropy(histogram):
+        """Compute Shannon Entropy"""
+        samples = []
+        for sample in histogram:
+            # Remove zeros
+            sample = sample[sample > 0]
+            result = -torch.sum(sample * torch.log(sample)).unsqueeze(0)
+            samples.append(result)
+        return torch.cat(samples)
+
+    def dmi(self, hgram1, hgram2):
+        """Compute Mutual Information metric.
+
+        Arguments:
+            hgram1: 2D histogram for image_1, shape: batch_size x num_bins x height*width
+            hgram2: 2D histogram for image_2, shape: batch_size x num_bins x height*width
+
+        Return:
+            Returns `1 - MI(I_1, I_2)/Entropy(I_1, I_2)`
+        """
+        # compute joint histogram and marginals
+        pxy = torch.bmm(hgram1, hgram2.transpose(1, 2)) / hgram1.shape[-1]
+        px = torch.sum(pxy, axis=1)  # marginal for x over y
+        py = torch.sum(pxy, axis=2)  # marginal for y over x
+        joint_entropy = self.entropy(pxy)
+        mi = self.entropy(px) + self.entropy(py) - joint_entropy
+        return torch.mean(1 - (mi / joint_entropy))
+
+    def hist_loss(
+        self, histogram_1: List[Tensor], histogram_2: List[Tensor]
+    ) -> Tuple[float, float]:
+        """Compute Histogram Losses.
+
+        Computes EMD and MI losses for each channel, then returns the mean.
+
+        Args:
+            histogram_1: first histogram tensor, shape: batch_size x num_channels x num_bins.
+            histogram_1: second histogram tensor, shape: batch_size x num_channels x num_bins
+            loss_type: type of loss function.
+
+        Returns:
+            Tuple containing mean of EMD and MI losses respectively.
+        """
+        emd = 0
+        mi = 0
+        num_channels = 0
         for channel_hgram1, channel_hgram2 in zip(histogram_1, histogram_2):
-            loss += self.loss_fn(channel_hgram1[0], channel_hgram2[0])
-        return loss
+            emd += self.loss_fn(channel_hgram1[0], channel_hgram2[0])
+            mi += self.dmi(channel_hgram1[1], channel_hgram2[1])
+            num_channels += 1
+        return emd / num_channels, mi / num_channels
 
     def __call__(self, input, reference):
-        # comment these lines when you inputs and outputs are in [0,1] range already
-        input = (input + 1) / 2
-        reference = (reference + 1) / 2
-        total_loss = 0
+
+        emd_total_loss = 0
+        mi_total_loss = 0
         if self.rgb:
-            total_loss += self.hist_loss(
+            emd, mi = self.hist_loss(
                 self.extract_hist(input), self.extract_hist(reference)
             )
+            emd_total_loss += emd
+            mi_total_loss += mi
         if self.yuv:
             input_yuv = self.to_YUV(input)
             reference_yuv = self.to_YUV(reference)
-            total_loss += self.hist_loss(
+            emd, mi = self.hist_loss(
                 self.extract_hist(input_yuv), self.extract_hist(reference_yuv)
             )
+            emd_total_loss += emd
+            mi_total_loss += mi
         if self.yuvgrad:
             input_v, input_h = self.get_image_gradients(input_yuv)
             ref_v, ref_h = self.get_image_gradients(reference_yuv)
 
-            total_loss += self.hist_loss(
+            emd, mi = self.hist_loss(
                 self.extract_hist(input_v), self.extract_hist(ref_v)
             )
-            total_loss += self.hist_loss(
+            emd_total_loss += emd
+            mi_total_loss += mi
+            emd, mi = self.hist_loss(
                 self.extract_hist(input_h), self.extract_hist(ref_h)
             )
+            emd_total_loss += emd
+            mi_total_loss += mi
 
-        return total_loss
+        return emd_total_loss, mi_total_loss

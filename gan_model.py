@@ -139,10 +139,11 @@ class GANModel:
         #         loss_G_L1 = self.L1_loss_fn(gen, y) * self.lambd
 
         # histogram loss
-        loss_hist = self.lambda_h * self.histogram_loss(img, gen)
+        emd_loss, mi_loss = self.histogram_loss(img, gen)
+        loss_hist = emd_loss + mi_loss
 
         # Combine
-        loss_G = loss_G_gan + loss_hist
+        loss_G = loss_G_gan + emd_loss + mi_loss
 
         loss_G.backward()
         self.optimizer_G.step()
@@ -195,10 +196,11 @@ class GANModel:
             loss_G_gan = self.gan_loss(self.D(gen, edge), 1)
 
             # histogram loss
-            loss_hist = self.lambda_h * self.histogram_loss(img, gen)
+            emd_loss, mi_loss = self.histogram_loss(img, gen)
+            loss_hist = emd_loss + mi_loss
 
             # Combine
-            loss_G = loss_G_gan + loss_hist
+            loss_G = loss_G_gan + emd_loss + mi_loss
 
         # save image
         if save:
