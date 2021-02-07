@@ -15,7 +15,7 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.histogram_loss = CPLoss(rgb=False, yuvgrad=False)
+        self.histogram_loss = CPLoss(rgb=False, yuvgrad=True)
         # HistogramLoss(
         #     loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
         # )
