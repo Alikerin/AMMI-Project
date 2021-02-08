@@ -72,7 +72,10 @@ parser.add_argument("--n_epoch", default=100, type=int)
 parser.add_argument("--beta1", default=0.5, type=float, help="momentum term of adam")
 parser.add_argument("--lambd", default=100.0, type=float, help="weight for L1 loss")
 parser.add_argument("--lambd_d", default=0.5, type=float, help="D loss scale")
-parser.add_argument("--lambda_h", default=1.0, type=float, help="Histogram Loss Scale")
+parser.add_argument("--lambda_mi", default=1.0, type=float, help="weight for L1 loss")
+parser.add_argument("--lambda_emd", default=1.0, type=float, help="Histogram Loss Scale")
+parser.add_argument("--yuvgrad", default=False, action="store_true")
+
 parser.add_argument(
     "--color_ref", default="", type=str, help="Color reference image path"
 )

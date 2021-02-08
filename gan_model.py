@@ -17,7 +17,9 @@ class GANModel:
 
         self.G = Generator()
         self.D = Discriminator()
-        self.histogram_loss = HistogramLoss(loss_fn=args.hist_loss, num_bins=256)
+        self.histogram_loss = HistogramLoss(
+            loss_fn=args.hist_loss, num_bins=256, yuvgrad=args.yuvgrad
+        )
 
         self.init_type = args.init_type
         if args.init_type is not None:
@@ -47,7 +49,8 @@ class GANModel:
 
         self.lambd = args.lambd
         self.lambd_d = args.lambd_d
-        self.lambda_h = args.lambda_h
+        self.lambda_mi = args.lambda_mi
+        self.lambda_emd = args.lambda_emd
 
         self.d_update_frequency = args.d_update_frequency
 
@@ -140,10 +143,9 @@ class GANModel:
 
         # histogram loss
         emd_loss, mi_loss = self.histogram_loss(img, gen)
-        loss_hist = emd_loss + mi_loss
 
         # Combine
-        loss_G = loss_G_gan + emd_loss + mi_loss
+        loss_G = loss_G_gan + (self.lambda_emd * emd_loss) + (self.lambda_mi * mi_loss)
 
         loss_G.backward()
         self.optimizer_G.step()
@@ -159,7 +161,8 @@ class GANModel:
         return {
             "G": loss_G,
             "G_gan": loss_G_gan,
-            "G_H": loss_hist,
+            "G_EMD": emd_loss,
+            "G_MI": mi_loss,
             "D": loss_D,
             "D_real": loss_D_real,
             "D_fake": loss_D_fake,
@@ -197,10 +200,11 @@ class GANModel:
 
             # histogram loss
             emd_loss, mi_loss = self.histogram_loss(img, gen)
-            loss_hist = emd_loss + mi_loss
 
             # Combine
-            loss_G = loss_G_gan + emd_loss + mi_loss
+            loss_G = (
+                loss_G_gan + (self.lambda_emd * emd_loss) + (self.lambda_mi * mi_loss)
+            )
 
         # save image
         if save:
@@ -213,7 +217,8 @@ class GANModel:
         return {
             "G": loss_G,
             "G_gan": loss_G_gan,
-            "G_H": loss_hist,
+            "G_EMD": emd_loss,
+            "G_MI": mi_loss,
             "D": loss_D,
             "D_real": loss_D_real,
             "D_fake": loss_D_fake,
