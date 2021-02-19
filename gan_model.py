@@ -1,11 +1,11 @@
 import os
 
-import cv2
 import numpy as np
 import torch
+from PIL import Image
 from torch.nn import init
 
-from histogram import CPLoss, GPLoss, HistogramLoss
+from histogram import CPLoss, GPLoss
 from model_modules import Generator
 
 
@@ -15,7 +15,7 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.histogram_loss = CPLoss(rgb=False, yuvgrad=True)
+        self.cp_loss = CPLoss(rgb=True, yuvgrad=True)
         # HistogramLoss(
         #     loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
         # )
@@ -32,7 +32,7 @@ class GANModel:
             self.optimizer_G, lr_lambda=self.lr_lambda
         )
 
-        self.gan_loss = GPLoss()
+        self.gp_loss = GPLoss()
         self.lambda_g = args.lambda_g
         self.lambda_h = args.lambda_h
 
@@ -69,7 +69,7 @@ class GANModel:
 
     def to(self, device):
         self.G.to(device)
-        self.histogram_loss.histlayer.to(device)
+        self.cp_loss.histlayer.to(device)
 
         # for state in itertools.chain(
         #     self.optimizer_G.state.values(), self.optimizer_D.state.values()
@@ -79,13 +79,10 @@ class GANModel:
         #             state[k] = v.to(device)
 
     def train(self, input, save, out_dir_img, epoch, i):
-        edge, img, img_idx = input
+        edge, content_ref, color_ref, img_idx = input
         # convert list of one_d histogram into a tensor of multi-channel histogram
         histogram = torch.stack(
-            self.histogram_loss.extract_hist(
-                self.histogram_loss.to_YUV(img), one_d=True
-            ),
-            1,
+            self.cp_loss.extract_hist(self.cp_loss.to_YUV(color_ref), one_d=True), 1,
         )
 
         ############################
@@ -94,84 +91,87 @@ class GANModel:
         self.optimizer_G.zero_grad()
         gen = self.G(edge, histogram)
 
-        # GAN loss of G
-        loss_G_gan = self.gan_loss(gen, img)
+        # GP loss
+        loss_GP = self.gp_loss(gen, content_ref)
 
-        # histogram loss
-        loss_hist = self.lambda_h * self.histogram_loss(gen, img)
+        # CP loss
+        loss_CP = self.lambda_h * self.cp_loss(gen, color_ref)
 
-        # Combine
-        loss_G = loss_G_gan + loss_hist
+        # SPL
+        loss_SPL = loss_GP + loss_CP
 
-        loss_G.backward()
+        loss_SPL.backward()
         self.optimizer_G.step()
 
         # save image
         if save:
             self.save_image(
-                (edge[0].unsqueeze(0), img[0].unsqueeze(0), gen[0].unsqueeze(0)),
+                (
+                    edge[0].unsqueeze(0),
+                    content_ref[0].unsqueeze(0),
+                    color_ref[0].unsqueeze(0),
+                    gen[0].unsqueeze(0),
+                ),
                 out_dir_img,
                 "train_ep_%d_img_%d" % (epoch, img_idx[0]),
             )
 
         return {
-            "G": loss_G,
-            "G_gan": loss_G_gan,
-            "G_H": loss_hist,
+            "loss_GP": loss_GP,
+            "loss_CP": loss_CP,
+            "loss_SPL": loss_SPL,
         }
 
     def eval(self, input, save, out_dir_img, epoch):
         with torch.no_grad():
-            edge, img, img_idx = input
+            edge, content_ref, color_ref, img_idx = input
             # convert list of one_d histogram into a tensor of multi-channel histogram
             histogram = torch.stack(
-                self.histogram_loss.extract_hist(
-                    self.histogram_loss.to_YUV(img), one_d=True
-                ),
-                1,
+                self.cp_loss.extract_hist(self.cp_loss.to_YUV(color_ref), one_d=True), 1,
             )
             gen = self.G(edge, histogram)
 
-            ############################
-            # G loss
-            ############################
-            # GAN loss of G
-            loss_G_gan = self.gan_loss(gen, img)
+            # GP loss
+            loss_GP = self.gp_loss(gen, content_ref)
 
-            # histogram loss
-            loss_hist = self.lambda_h * self.histogram_loss(gen, img)
+            # CP loss
+            loss_CP = self.lambda_h * self.cp_loss(gen, color_ref)
 
-            # Combine
-            loss_G = loss_G_gan + loss_hist
+            # SPL
+            loss_SPL = loss_GP + loss_CP
 
         # save image
         if save:
             self.save_image(
-                (edge[0].unsqueeze(0), img[0].unsqueeze(0), gen[0].unsqueeze(0)),
+                (
+                    edge[0].unsqueeze(0),
+                    content_ref[0].unsqueeze(0),
+                    color_ref[0].unsqueeze(0),
+                    gen[0].unsqueeze(0),
+                ),
                 out_dir_img,
                 "val_ep_%d_img_%d" % (epoch, img_idx[0]),
             )
 
         return {
-            "G": loss_G,
-            "G_gan": loss_G_gan,
-            "G_H": loss_hist,
+            "loss_GP": loss_GP,
+            "loss_CP": loss_CP,
+            "loss_SPL": loss_SPL,
         }
 
     def test(self, images, i, out_dir_img):
         with torch.no_grad():
-            A, B, img_idx, C = images
+            edge, content_ref, color_ref, img_idx = input
             # convert list of one_d histogram into a tensor of multi-channel histogram
-            C = C if C is not None else B
             histogram = torch.stack(
-                self.histogram_loss.extract_hist(
-                    self.histogram_loss.to_YUV(C), one_d=True
-                ),
-                1,
+                self.cp_loss.extract_hist(self.cp_loss.to_YUV(color_ref), one_d=True), 1,
             )
-            gen = self.G(A, histogram)
+            gen = self.G(edge, histogram)
             self.save_image(
-                (A, B, gen), out_dir_img, "test_%d" % img_idx, test=True,
+                (edge, content_ref, color_ref, gen),
+                out_dir_img,
+                "test_%d" % img_idx,
+                test=True,
             )
         return 0, 0
 
@@ -195,20 +195,24 @@ class GANModel:
 
     def save_image(self, input, filepath, fname, test=False):
         """ input is a tuple of the images we want to compare """
-        A, B, gen = input
+        edge, content_ref, color_ref, gen = input
 
         if test:
             img = self.tensor2image(gen)
             img = img.squeeze().transpose(1, 2, 0)
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            img = Image.fromarray(img)
             path = os.path.join(filepath, "%s.png" % fname)
-            cv2.imwrite(path, img)
+            img.save(path)
 
         else:
-            merged = self.tensor2image(self.merge_images(A, B, gen))
-            merged = cv2.cvtColor(merged, cv2.COLOR_RGB2BGR)
+            merged = self.merge_images(
+                self.tensor2image(edge),
+                self.tensor2image(content_ref),
+                self.tensor2image(color_ref),
+                self.tensor2image(gen),
+            )
             path = os.path.join(filepath, "%s.png" % fname)
-            cv2.imwrite(path, merged)
+            merged.save(path)
 
         print("saved %s" % path)
 
@@ -217,12 +221,12 @@ class GANModel:
         image = 127.5 * (image_data.cpu().float().numpy() + 1.0)
         return image.astype(np.uint8)
 
-    def merge_images(self, sources, targets, generated):
-        row, _, h, w = sources.size()
-        merged = torch.zeros([3, row * h, w * 3])
-        for idx, (s, t, g) in enumerate(zip(sources, targets, generated)):
-            i = idx
-            merged[:, i * h : (i + 1) * h, 0:w] = s
-            merged[:, i * h : (i + 1) * h, w : 2 * w] = g
-            merged[:, i * h : (i + 1) * h, 2 * w : 3 * w] = t
-        return merged.permute(1, 2, 0)
+    def merge_images(self, edge, content_ref, color_ref, gen):
+        print(edge.shape)
+        _, _, h, w = edge.shape
+        merged = Image.new("RGB", (w * 4, h))
+        merged.paste(Image.fromarray(edge[0].transpose(1, 2, 0)), (0, 0))
+        merged.paste(Image.fromarray(content_ref[0].transpose(1, 2, 0)), (w, 0))
+        merged.paste(Image.fromarray(color_ref[0].transpose(1, 2, 0)), (w * 2, 0))
+        merged.paste(Image.fromarray(gen[0].transpose(1, 2, 0)), (w * 3, 0))
+        return merged

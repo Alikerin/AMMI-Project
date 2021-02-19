@@ -29,13 +29,13 @@ Should choose the CycleGAN one in the format of
 ### Train model from scratch
 
 ```bash
-python main.py --mode train --data_dir [data_directory] --out_dir [output_directory] --n_epoch 300 --gan_loss MSE --resize 143 --crop 128 --batch_size 20 --color_space YCbCr 
+python main.py --mode train --data_dir [data_directory] --out_dir [output_directory] --n_epoch 300 --resize 143 --crop 128 --batch_size 20
 ```
 Default ```data_dir``` is ```./datasets/maps/```. Source (A) and target (B) images should be in folders trainA/trainB, valA/valB, testA/testB separately.
 
 ### Continue train using pretrained model
 ```bash
-python main.py --mode train --data_dir [data_directory] --out_dir [output_directory] --n_epoch 300 --gan_loss MSE --resize 143 --crop 128 --batch_size 20  --pretrain_path ./checkpoints/xxx/xxx.pt
+python main.py --mode train --data_dir [data_directory] --out_dir [output_directory] --n_epoch 300 --resize 143 --crop 128 --batch_size 20  --pretrain_path ./checkpoints/xxx/xxx.pt
 ```
 Need to provide same configs/options when continue to train a model.
 
