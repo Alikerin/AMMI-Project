@@ -421,7 +421,7 @@ if __name__ == "__main__":
             # model.test(images, i, out_dir_img)
             # add color-reference image
             if args.color_ref:
-                color_ref_img = Image.open(args.color_ref).convert(args.color_space)
+                color_ref_img = Image.open(args.color_ref).convert("RGB")
                 color_ref_img = c_transform(color_ref_img)
                 color_ref_img = color_ref_img.to(device).unsqueeze(0)
                 images.append(color_ref_img)
