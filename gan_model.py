@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 from torch.nn import init
 
-from histogram import CPLoss, GPLoss
+from histogram import GPLoss, HistogramLoss
 from model_modules import Generator
 
 
@@ -15,10 +15,10 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
-        self.cp_loss = CPLoss(rgb=True, yuvgrad=True)
-        # HistogramLoss(
-        #     loss_fn=args.hist_loss, rgb=False, yuvgrad=False, num_bins=256
-        # )
+        # self.cp_loss = CPLoss(rgb=True, yuvgrad=True)
+        self.cp_loss = HistogramLoss(
+            loss_fn=args.hist_loss, rgb=False, yuv=True, num_bins=256
+        )
 
         self.init_type = args.init_type
         if args.init_type is not None:
@@ -70,13 +70,6 @@ class GANModel:
     def to(self, device):
         self.G.to(device)
         self.cp_loss.histlayer.to(device)
-
-        # for state in itertools.chain(
-        #     self.optimizer_G.state.values(), self.optimizer_D.state.values()
-        # ):
-        #     for k, v in state.items():
-        #         if isinstance(v, torch.Tensor):
-        #             state[k] = v.to(device)
 
     def train(self, input, save, out_dir_img, epoch, i):
         edge, content_ref, color_ref, img_idx = input

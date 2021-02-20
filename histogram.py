@@ -113,7 +113,7 @@ def emd_loss(hgram1, hgram2):
         EMD loss.
     """
     return (
-        ((torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1)) ** 2)
+        (torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1))
         .sum(1)
         .mean(-1)
         .mean()
@@ -255,25 +255,13 @@ def rgb2yuv(image: Tensor):
 
 
 class HistogramLoss(nn.Module):
-    def __init__(self, loss_fn, num_bins, rgb=True, yuv=True, yuvgrad=True):
+    def __init__(self, loss_fn, num_bins, rgb=True, yuv=True):
         super().__init__()
         self.rgb = rgb
         self.yuv = yuv
-        self.yuvgrad = yuvgrad
         self.histlayer = HistLayer(in_channels=1, num_bins=num_bins)
         loss_dict = {"emd": emd_loss, "mae": mae_loss, "mse": mse_loss}
         self.loss_fn = loss_dict[loss_fn]
-
-    def get_image_gradients(self, input):
-        f_v_1 = F.pad(input, (0, -1, 0, 0))
-        f_v_2 = F.pad(input, (-1, 0, 0, 0))
-        f_v = f_v_1 - f_v_2
-
-        f_h_1 = F.pad(input, (0, 0, 0, -1))
-        f_h_2 = F.pad(input, (0, 0, -1, 0))
-        f_h = f_h_1 - f_h_2
-
-        return f_v, f_h
 
     def to_YUV(self, image):
         y = (
@@ -334,17 +322,6 @@ class HistogramLoss(nn.Module):
             total_loss += self.hist_loss(
                 self.extract_hist(input_yuv), self.extract_hist(reference_yuv)
             )
-        if self.yuvgrad:
-            input_v, input_h = self.get_image_gradients(input_yuv)
-            ref_v, ref_h = self.get_image_gradients(reference_yuv)
-
-            total_loss += self.hist_loss(
-                self.extract_hist(input_v), self.extract_hist(ref_v)
-            )
-            total_loss += self.hist_loss(
-                self.extract_hist(input_h), self.extract_hist(ref_h)
-            )
-
         return total_loss
 
 
