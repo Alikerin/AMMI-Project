@@ -10,7 +10,8 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--original_dir", required=True, type=str)
     parser.add_argument("--new_dir", required=True, type=str)
-    parser.add_argument("--n_repeat", required=True, type=str)
+    parser.add_argument("--n_repeat", required=True, type=int)
+    parser.add_argument("--data_ratio", default=1.0, type=float)
     return parser.parse_args()
 
 
@@ -22,6 +23,7 @@ def main(args):
     for folder in dataset_dir:
         print(f"Creating new images in {new_dir}/{folder} from {original_dir}/{folder}")
         folder_images = glob.glob(f"{original_dir}/{folder}/*")
+        folder_images = folder_images[: int(args.data_ratio * len(folder_images))]
         out_dir = os.path.join(new_dir, folder)
         os.makedirs(out_dir, exist_ok=True)
 
