@@ -10,6 +10,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--original_dir", required=True, type=str)
     parser.add_argument("--new_dir", required=True, type=str)
+    parser.add_argument("--n_repeat", required=True, type=str)
     return parser.parse_args()
 
 
@@ -27,8 +28,8 @@ def main(args):
         for img in folder_images:
             img_filename = os.path.split(img)[-1].split(".")[0]
             img = Image.open(img)
-            five_random = random.choices(folder_images, k=5)
-            for i, img2 in enumerate(five_random):
+            random_picks = random.choices(folder_images, k=args.n_repeat)
+            for i, img2 in enumerate(random_picks):
                 new_img = Image.new("RGB", (256 * 3, 256))
                 img2 = Image.open(img2)
                 img2 = img2.crop((256, 0, 512, 256))
