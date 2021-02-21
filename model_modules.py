@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from icecream import ic
 from torchvision import models
 
 #############################################################

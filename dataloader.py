@@ -44,6 +44,8 @@ class GANDataset(Dataset):
         w2 = int(w / 3)
         imageA = AB[0:h, 0:w2]
         imageB = AB[0:h, w2 : 2 * w2]
+        imageA = cv2.cvtColor(imageB, cv2.COLOR_RGB2GRAY)[:, :, np.newaxis]
+        imageA = np.tile(imageA, (1, 1, 3))
         imageC = AB[0:h, 2 * w2 : w]
         # transform the images if needed
         if self.test:

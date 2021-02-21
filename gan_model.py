@@ -32,7 +32,7 @@ class GANModel:
             self.optimizer_G, lr_lambda=self.lr_lambda
         )
 
-        self.gp_loss = GPLoss()
+        self.gp_loss = torch.nn.MSELoss()  # GPLoss()
         self.lambda_g = args.lambda_g
         self.lambda_h = args.lambda_h
 
@@ -75,7 +75,10 @@ class GANModel:
         edge, content_ref, color_ref, img_idx = input
         # convert list of one_d histogram into a tensor of multi-channel histogram
         histogram = torch.stack(
-            self.cp_loss.extract_hist(self.cp_loss.to_YUV(color_ref), one_d=True), 1,
+            self.cp_loss.extract_hist(
+                self.cp_loss.to_YUV(color_ref), one_d=True, normalize=True
+            ),
+            1,
         )
 
         ############################
@@ -120,7 +123,10 @@ class GANModel:
             edge, content_ref, color_ref, img_idx = input
             # convert list of one_d histogram into a tensor of multi-channel histogram
             histogram = torch.stack(
-                self.cp_loss.extract_hist(self.cp_loss.to_YUV(color_ref), one_d=True), 1,
+                self.cp_loss.extract_hist(
+                    self.cp_loss.to_YUV(color_ref), one_d=True, normalize=True
+                ),
+                1,
             )
             gen = self.G(edge, histogram)
 
@@ -157,7 +163,10 @@ class GANModel:
             edge, content_ref, color_ref, img_idx = input
             # convert list of one_d histogram into a tensor of multi-channel histogram
             histogram = torch.stack(
-                self.cp_loss.extract_hist(self.cp_loss.to_YUV(color_ref), one_d=True), 1,
+                self.cp_loss.extract_hist(
+                    self.cp_loss.to_YUV(color_ref), one_d=True, normalize=True
+                ),
+                1,
             )
             gen = self.G(edge, histogram)
             self.save_image(
