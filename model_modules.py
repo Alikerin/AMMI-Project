@@ -207,7 +207,7 @@ class Generator(nn.Module):
         self.decoder6 = DecoderBlock(384, 128, bias=bias, norm=norm)
         self.decoder7 = DecoderBlock(192, out_channels, bias=bias, do_norm=False)
 
-        # self.hist_fc = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
+        self.hist_fc = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
 
     def forward(self, x, hist):
         # 8-step encoder
@@ -218,10 +218,9 @@ class Generator(nn.Module):
         encode5 = self.encoder5(encode4)
         encode6 = self.encoder6(encode5)
         encode7 = self.encoder7(encode6)
-        encode7 = torch.cat(
-            [encode7, torch.flatten(hist, 1).unsqueeze(-1).unsqueeze(-1)], 1,
+        encode7 = encode7 + self.hist_fc(torch.flatten(hist, 1)).unsqueeze(-1).unsqueeze(
+            -1
         )
-
         # 8-step UNet decoder
         decode1 = torch.cat([self.decoder1(encode7), encode6], 1)
         decode2 = torch.cat([self.decoder2(decode1), encode5], 1)
