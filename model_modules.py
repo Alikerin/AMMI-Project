@@ -193,7 +193,7 @@ class Generator(nn.Module):
         self.encoder7 = EncoderBlock(512, 512, bias=bias, do_norm=False)
 
         # 8-step UNet decoder
-        self.decoder1 = DecoderBlock(1280, 512, bias=bias, norm=norm)
+        self.decoder1 = DecoderBlock(512, 512, bias=bias, norm=norm)
         self.decoder2 = DecoderBlock(
             1024, 512, bias=bias, norm=norm, dropout_prob=dropout_prob
         )
