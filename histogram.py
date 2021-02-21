@@ -73,12 +73,10 @@ class HistLayer(nn.Module):
         self.threshold = nn.Threshold(1, 0)
         self.hist_pool = nn.AdaptiveAvgPool2d(1)
 
-    def forward(self, input_image):
+    def forward(self, input_image, normalize=True):
         """Computes differentiable histogram.
-
         Args:
             input_image: input image.
-
         Returns:
             flattened and un-flattened histogram.
         """
@@ -96,8 +94,11 @@ class HistLayer(nn.Module):
         xx = self.threshold(xx)
 
         # clean-up
-        two_d = torch.flatten(xx, 2) / (input_image.shape[-1] * input_image.shape[-1])
-        xx = self.hist_pool(xx)  # xx.sum([2, 3])
+        two_d = torch.flatten(xx, 2)
+        if normalize:
+            xx = self.hist_pool(xx)
+        else:
+            xx = xx.sum([2, 3])
         one_d = torch.flatten(xx, 1)
         return one_d, two_d
 
@@ -192,7 +193,7 @@ class HistogramLoss(nn.Module):
         image = torch.stack([y, u, v], 1)
         return image
 
-    def extract_hist(self, image, one_d=False):
+    def extract_hist(self, image, one_d=False, normalize=False):
         """Extracts both vector and 2D histogram.
 
         Args:
@@ -209,7 +210,9 @@ class HistogramLoss(nn.Module):
         _, num_ch, _, _ = image.shape
         hists = []
         for ch in range(num_ch):
-            hists.append(self.histlayer(image[:, ch, :, :].unsqueeze(1)))
+            hists.append(
+                self.histlayer(image[:, ch, :, :].unsqueeze(1), normalize=normalize)
+            )
         if one_d:
             return [one_d_hist for (one_d_hist, _) in hists]
         return hists
