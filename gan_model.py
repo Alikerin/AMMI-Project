@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 from torch.nn import init
 
-from histogram import GPLoss, HistogramLoss
+from histogram import HistogramLoss
 from model_modules import Generator
 
 
@@ -88,7 +88,7 @@ class GANModel:
         gen = self.G(edge, histogram)
 
         # GP loss
-        loss_GP = self.gp_loss(gen, content_ref)
+        loss_GP = self.gp_loss(gen, edge)  # since edge is grayscale
 
         # CP loss
         loss_CP = self.lambda_h * self.cp_loss(gen, color_ref)
@@ -131,7 +131,7 @@ class GANModel:
             gen = self.G(edge, histogram)
 
             # GP loss
-            loss_GP = self.gp_loss(gen, content_ref)
+            loss_GP = self.gp_loss(gen, edge)  # since edge is grayscale
 
             # CP loss
             loss_CP = self.lambda_h * self.cp_loss(gen, color_ref)
