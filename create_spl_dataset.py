@@ -30,7 +30,7 @@ def main(args):
         out_dir = os.path.join(new_dir, folder)
         os.makedirs(out_dir, exist_ok=True)
 
-        for img in folder_images[:2]:
+        for img in folder_images:
             img_filename = os.path.split(img)[-1].split(".")[0]
             AB = Image.open(img)
             w, h = AB.size
