@@ -88,7 +88,7 @@ class GANModel:
         gen = self.G(edge, histogram)
 
         # GP loss
-        loss_GP = self.gp_loss(gen, edge)  # since edge is grayscale
+        loss_GP = self.lambda_g * self.gp_loss(gen, edge)  # since edge is grayscale
 
         # CP loss
         loss_CP = self.lambda_h * self.cp_loss(gen, color_ref)
