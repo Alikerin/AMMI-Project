@@ -6,3 +6,5 @@ datasets/
 checkpoints/
 outputs/
 *.ipynb
+*.png
+
