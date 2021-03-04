@@ -1,5 +1,5 @@
 # Color Transfer with Differentiable Histogram
-This project is based on [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/pdf/1611.07004v1.pdf).
+This project is based on [Differentiable Histogram with Hard-Binning](https://arxiv.org/pdf/2012.06311.pdf).
 
 
 ## Prerequisites
@@ -8,9 +8,9 @@ This project is based on [Image-to-Image Translation with Conditional Adversaria
 
 
 ## Dataset
-Dataset was generated from edges2shoes dataset using `create_spl_dataset.py`
+Dataset was generated from edges2shoes dataset using `create_dataset.py`
 ```bash
-python create_spl_dataset.py --original_dir "edges2shoes" --new_dir "edges2shoes_triplets" --n_repeat 1
+python create_dataset.py --original_dir "edges2shoes" --new_dir "edges2shoes_triplets" --n_repeat 1
 ```
 
 
