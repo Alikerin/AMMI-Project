@@ -15,6 +15,7 @@ class GANModel:
         self.args = args
 
         self.G = Generator()
+
         # self.cp_loss = CPLoss(rgb=True, yuvgrad=True)
         self.cp_loss = HistogramLoss(
             loss_fn=args.hist_loss, rgb=False, yuv=True, num_bins=256
@@ -34,7 +35,8 @@ class GANModel:
 
         self.gp_loss = torch.nn.MSELoss()  # GPLoss()
         self.lambda_g = args.lambda_g
-        self.lambda_h = args.lambda_h
+        self.lambda_mi = args.lambda_mi
+        self.lambda_emd = args.lambda_emd
 
     def lr_lambda(self, epoch):
         return 1.0 - max(0, epoch + self.start_epoch - self.args.lr_decay_start) / (
@@ -116,7 +118,6 @@ class GANModel:
             "loss_GP": loss_GP,
             "loss_CP": loss_CP,
             "loss_SPL": loss_SPL,
-        }
 
     def eval(self, input, save, out_dir_img, epoch):
         with torch.no_grad():
