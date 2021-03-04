@@ -200,12 +200,9 @@ if __name__ == "__main__":
 
         win_train_G = viz.line(X=np.asarray([0]), Y=np.asarray([0]))
         win_train_D = viz.line(X=np.asarray([0]), Y=np.asarray([0]))
-        # win_train_tot = viz.line(X=np.asarray([0]), Y=np.asarray([0]))
         win_eval_G = viz.line(X=np.asarray([0]), Y=np.asarray([0]))
         win_eval_D = viz.line(X=np.asarray([0]), Y=np.asarray([0]))
-        # win_eval_tot  = viz.line(X=np.asarray([0]), Y=np.asarray([0]))
-        # print('train window id =', win_train)
-        # print('eval window id =', win_eval)
+
     else:
         viz = None
 
@@ -423,14 +420,6 @@ if __name__ == "__main__":
             if i >= args.save_n_img:
                 break
             # model.test(images, i, out_dir_img)
-            # add color-reference image
-            if args.color_ref:
-                color_ref_img = Image.open(args.color_ref).convert(args.color_space)
-                color_ref_img = c_transform(color_ref_img)
-                color_ref_img = color_ref_img.to(device).unsqueeze(0)
-                images.append(color_ref_img)
-            else:
-                images.append(None)
             score_gen, score_gt = model.test(images, i, out_dir_img)
             score_gen = round(float(score_gen), 6)
             score_gt = round(float(score_gt), 6)
@@ -439,24 +428,3 @@ if __name__ == "__main__":
 
             with open(os.path.join(out_dir, "d_scores.json"), "w") as f:
                 json.dump({"scores_gen": scores_gen, "scores_gt": scores_gt}, f)
-
-        # test_loss = {}
-        # for i, images in enumerate(test_loader):
-        #     loss = model.eval(images)
-        #
-        #     for k, v in loss.items():
-        #         if test_loss.get(k) is None:
-        #             test_loss[k] = 0
-        #         v = round(float(v), 4)
-        #         test_loss[k] += v
-        #
-        # s = ""
-        # for k, v in test_loss.items():
-        #     test_loss[k] = round(v / (i+1), 4)
-        #     s += "%s %f   " % (k, test_loss[k])
-        #
-        # print("Average loss %s" % (s))
-        #
-        # log_file = os.path.join(out_dir, "test.json")
-        # with open(log_file, "w") as f:
-        #     json.dump(test_loss, f)

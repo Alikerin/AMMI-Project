@@ -73,7 +73,7 @@ class HistLayer(nn.Module):
         self.threshold = nn.Threshold(1, 0)
         self.hist_pool = nn.AdaptiveAvgPool2d(1)
 
-    def forward(self, input_image):
+    def forward(self, input_image, normalize=True):
         """Computes differentiable histogram.
 
         Args:
@@ -96,8 +96,11 @@ class HistLayer(nn.Module):
         xx = self.threshold(xx)
 
         # clean-up
-        two_d = torch.flatten(xx, 2) / (input_image.shape[-1] * input_image.shape[-1])
-        xx = self.hist_pool(xx)  # xx.sum([2, 3])
+        two_d = torch.flatten(xx, 2)
+        if normalize:
+            xx = self.hist_pool(xx)
+        else:
+            xx = xx.sum([2, 3])
         one_d = torch.flatten(xx, 1)
         return one_d, two_d
 
@@ -113,7 +116,10 @@ def emd_loss(hgram1, hgram2):
         EMD loss.
     """
     return (
-        ((torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1)) ** 2).sum(1).mean()
+        (torch.cumsum(hgram1, dim=1) - torch.cumsum(hgram2, dim=1))
+        .sum(1)
+        .mean(-1)
+        .mean()
     )
 
 
@@ -144,25 +150,14 @@ def mse_loss(histogram_1: Tensor, histogram_2: Tensor) -> Tensor:
 
 
 class HistogramLoss(nn.Module):
-    def __init__(self, loss_fn, num_bins, rgb=False, yuv=True, yuvgrad=False):
+    def __init__(self, loss_fn, num_bins, rgb=True, yuv=True):
+
         super().__init__()
         self.rgb = rgb
         self.yuv = yuv
-        self.yuvgrad = yuvgrad
         self.histlayer = HistLayer(in_channels=1, num_bins=num_bins)
         loss_dict = {"emd": emd_loss, "mae": mae_loss, "mse": mse_loss}
         self.loss_fn = loss_dict[loss_fn]
-
-    def get_image_gradients(self, input):
-        f_v_1 = F.pad(input, (0, -1, 0, 0))
-        f_v_2 = F.pad(input, (-1, 0, 0, 0))
-        f_v = f_v_1 - f_v_2
-
-        f_h_1 = F.pad(input, (0, 0, 0, -1))
-        f_h_2 = F.pad(input, (0, 0, -1, 0))
-        f_h = f_h_1 - f_h_2
-
-        return f_v, f_h
 
     def to_YUV(self, image):
         """Converts image from RGB to YUV color space.
@@ -192,7 +187,7 @@ class HistogramLoss(nn.Module):
         image = torch.stack([y, u, v], 1)
         return image
 
-    def extract_hist(self, image, one_d=False):
+    def extract_hist(self, image, one_d=False, normalize=False):
         """Extracts both vector and 2D histogram.
 
         Args:
@@ -209,7 +204,9 @@ class HistogramLoss(nn.Module):
         _, num_ch, _, _ = image.shape
         hists = []
         for ch in range(num_ch):
-            hists.append(self.histlayer(image[:, ch, :, :].unsqueeze(1)))
+            hists.append(
+                self.histlayer(image[:, ch, :, :].unsqueeze(1), normalize=normalize)
+            )
         if one_d:
             return [one_d_hist for (one_d_hist, _) in hists]
         return hists
@@ -283,24 +280,7 @@ class HistogramLoss(nn.Module):
             emd, mi = self.hist_loss(
                 self.extract_hist(input_yuv), self.extract_hist(reference_yuv)
             )
-            emd_total_loss += emd
-            mi_total_loss += mi
-        if self.yuvgrad:
-            input_v, input_h = self.get_image_gradients(input_yuv)
-            ref_v, ref_h = self.get_image_gradients(reference_yuv)
-
-            emd, mi = self.hist_loss(
-                self.extract_hist(input_v), self.extract_hist(ref_v)
-            )
-            emd_total_loss += emd
-            mi_total_loss += mi
-            emd, mi = self.hist_loss(
-                self.extract_hist(input_h), self.extract_hist(ref_h)
-            )
-            emd_total_loss += emd
-            mi_total_loss += mi
-
-        return emd_total_loss, mi_total_loss
+        return total_loss
 
 
 class GPLoss(nn.Module):

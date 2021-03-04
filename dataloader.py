@@ -41,28 +41,34 @@ class GANDataset(Dataset):
 
         # split AB image into A and B
         h, w, _ = AB.shape
-        w2 = int(w / 2)
+        w2 = int(w / 3)
         imageA = AB[0:h, 0:w2]
-        imageB = AB[0:h, w2:w]
-
+        imageB = AB[0:h, w2 : 2 * w2]
+        imageA = cv2.cvtColor(imageB, cv2.COLOR_RGB2GRAY)[:, :, np.newaxis]
+        imageA = np.tile(imageA, (1, 1, 3))
+        imageC = AB[0:h, 2 * w2 : w]
         # transform the images if needed
         if self.test:
             imageA = self.transform(imageA)
             imageB = self.transform(imageB)
+            imageC = self.transform(imageC)
         else:
             transform_params = get_params(self.opt, imageA.shape[:-1])
             A_transform = get_transform(self.opt, self.mean, self.std, transform_params)
             B_transform = get_transform(self.opt, self.mean, self.std, transform_params)
+            C_transform = get_transform(self.opt, self.mean, self.std, transform_params)
 
             imageA = A_transform(imageA)
             imageB = B_transform(imageB)
+            imageC = C_transform(imageC)
 
         # convert to GPU tensor
         if self.device is not None:
             imageA = imageA.to(self.device)
             imageB = imageB.to(self.device)
+            imageC = imageC.to(self.device)
 
-        return imageA, imageB, index + 1
+        return imageA, imageB, imageC, index + 1
 
     # returns the number of examples we read
     def __len__(self):
